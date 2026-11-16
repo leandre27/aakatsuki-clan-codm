@@ -1,6 +1,6 @@
 // Notifications push (Web Push) sans dépendance : chiffrement RFC 8291 (aes128gcm)
 // et authentification VAPID RFC 8292 (JWT ES256), avec le module crypto de Node.
-import { createECDH, createPrivateKey, createPublicKey, generateKeyPairSync, hkdfSync, createCipheriv, randomBytes, sign } from 'node:crypto';
+import { createHash, createECDH, createPrivateKey, createPublicKey, generateKeyPairSync, hkdfSync, createCipheriv, randomBytes, sign } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -64,18 +64,21 @@ export function encrypt(payload, keys, _test = {}) {
   return Buffer.concat([salt, rs, Buffer.from([asPublic.length]), asPublic, body]);
 }
 
-export function createPush({ sql, dataDir, subject, testPrefix = '' }) {
-  sql.exec(`CREATE TABLE IF NOT EXISTS push_subscriptions (
-    endpoint TEXT PRIMARY KEY, user_id TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, created_at INTEGER NOT NULL, user_agent TEXT)`);
-  sql.exec('CREATE INDEX IF NOT EXISTS push_user ON push_subscriptions(user_id)');
+export async function createPush({ db, dataDir, subject, testPrefix = '' }) {
+  // Clé = empreinte de l'adresse (les adresses de push dépassent la taille d'une clé MySQL)
+  if (db.dialect === 'mysql') {
+    await db.run(`CREATE TABLE IF NOT EXISTS push_subs (
+      endpoint_hash CHAR(64) NOT NULL PRIMARY KEY, endpoint TEXT NOT NULL, user_id VARCHAR(64) NOT NULL, p256dh VARCHAR(128) NOT NULL,
+      auth VARCHAR(64) NOT NULL, created_at BIGINT NOT NULL, user_agent VARCHAR(200), INDEX push_user (user_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin`);
+  } else {
+    await db.run(`CREATE TABLE IF NOT EXISTS push_subs (
+      endpoint_hash TEXT PRIMARY KEY, endpoint TEXT NOT NULL, user_id TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, created_at INTEGER NOT NULL, user_agent TEXT)`);
+    await db.run('CREATE INDEX IF NOT EXISTS push_user ON push_subs(user_id)');
+  }
   const vapid = loadVapid(dataDir);
-  const upsert = sql.prepare(`INSERT INTO push_subscriptions (endpoint, user_id, p256dh, auth, created_at, user_agent) VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT(endpoint) DO UPDATE SET user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth, created_at = excluded.created_at`);
-  const byUser = sql.prepare('SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ?');
-  const countUser = sql.prepare('SELECT COUNT(*) AS n FROM push_subscriptions WHERE user_id = ?');
-  const oldest = sql.prepare('DELETE FROM push_subscriptions WHERE endpoint = (SELECT endpoint FROM push_subscriptions WHERE user_id = ? ORDER BY created_at LIMIT 1)');
-  const del = sql.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?');
-  const delOwned = sql.prepare('DELETE FROM push_subscriptions WHERE endpoint = ? AND user_id = ?');
+  const h = (endpoint) => createHash('sha256').update(endpoint).digest('hex');
+  const upsert = db.upsert('push_subs', ['endpoint_hash', 'endpoint', 'user_id', 'p256dh', 'auth', 'created_at', 'user_agent'], ['endpoint_hash']);
+  const del = (endpoint) => db.run('DELETE FROM push_subs WHERE endpoint_hash = ?', [h(endpoint)]);
 
   async function deliver(sub, message) {
     try {
@@ -89,25 +92,31 @@ export function createPush({ sql, dataDir, subject, testPrefix = '' }) {
         body: encrypt(JSON.stringify(message), sub),
         signal: AbortSignal.timeout(10_000),
       });
-      if (res.status === 404 || res.status === 410) del.run(sub.endpoint); // appareil désabonné
+      if (res.status === 404 || res.status === 410) await del(sub.endpoint); // appareil désabonné
       else if (!res.ok) console.warn('Push refusé', res.status, new URL(sub.endpoint).host);
     } catch (e) { console.warn('Push impossible', e.message); }
   }
 
   return {
     publicKey: vapid.publicKey,
-    subscribe(userId, sub, ua = '') {
+    async subscribe(userId, sub, ua = '') {
       if (!sub || !allowedEndpoint(sub.endpoint, testPrefix)) return 'Service de notifications inconnu.';
       const keys = sub.keys || {};
       if (fromB64u(keys.p256dh || '').length !== 65 || fromB64u(keys.auth || '').length !== 16) return 'Abonnement invalide.';
-      upsert.run(sub.endpoint, userId, keys.p256dh, keys.auth, Date.now(), String(ua).slice(0, 200));
-      while (countUser.get(userId).n > 10) oldest.run(userId); // 10 appareils maximum par membre
+      await db.run(upsert, [h(sub.endpoint), sub.endpoint, userId, keys.p256dh, keys.auth, Date.now(), String(ua).slice(0, 200)]);
+      // 10 appareils maximum par membre : les plus anciens sont retirés
+      const rows = await db.query('SELECT endpoint_hash FROM push_subs WHERE user_id = ? ORDER BY created_at DESC', [userId]);
+      for (const r of rows.slice(10)) await db.run('DELETE FROM push_subs WHERE endpoint_hash = ?', [r.endpoint_hash]);
       return null;
     },
-    unsubscribe(userId, endpoint) { if (typeof endpoint === 'string') delOwned.run(endpoint, userId); },
+    async unsubscribe(userId, endpoint) {
+      if (typeof endpoint === 'string') await db.run('DELETE FROM push_subs WHERE endpoint_hash = ? AND user_id = ?', [h(endpoint), userId]);
+    },
     // Envoie à tous les appareils du membre, sans bloquer la réponse HTTP
-    send(userId, message) {
-      for (const s of byUser.all(userId)) deliver(s, message);
+    async send(userId, message) {
+      try {
+        for (const s of await db.query('SELECT endpoint, p256dh, auth FROM push_subs WHERE user_id = ?', [userId])) deliver(s, message);
+      } catch (e) { console.warn('Push impossible', e.message); }
     },
   };
 }

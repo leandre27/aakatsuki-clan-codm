@@ -1,6 +1,6 @@
 // Serveur 影 AaKATSUKI 影 : API, sessions et fichiers du site. Node 22+, aucune dépendance.
 import http from 'node:http';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
@@ -15,6 +15,9 @@ import { ROSTER } from './roster.js';
 import { createPush } from './push.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+// En développement, les réglages locaux (.env, jamais envoyé sur GitHub) sont lus automatiquement.
+// Une variable déjà définie n'est jamais remplacée. En production, ils viennent de l'environnement.
+if (process.env.NODE_ENV !== 'production' && existsSync(join(ROOT, '.env'))) process.loadEnvFile(join(ROOT, '.env'));
 const env = process.env;
 const PROD = env.NODE_ENV === 'production';
 const DEMO = env.DEMO === '1';
@@ -31,10 +34,12 @@ const DEMO_ACCOUNTS = [
 ];
 
 // ---------- Données ----------
-const store = openStore(DATA_DIR);
-const sessions = auth.sessions(store.sql);
-const push = createPush({
-  sql: store.sql, dataDir: DATA_DIR,
+class HttpError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
+// MySQL / MariaDB si DATABASE_URL est défini (production), sinon SQLite dans DATA_DIR
+const store = await openStore({ url: env.DATABASE_URL || '', dir: DATA_DIR });
+const sessions = await auth.sessions(store.db);
+const push = await createPush({
+  db: store.db, dataDir: DATA_DIR,
   subject: env.PUSH_SUBJECT || (env.ADMIN_EMAIL ? `mailto:${env.ADMIN_EMAIL}` : 'mailto:admin@aakatsuki.app'),
   testPrefix: env.PUSH_TEST_PREFIX || '',
 });
@@ -49,23 +54,45 @@ let actor = null;
 core.configure({
   getDB: () => store.state, getActor: () => actor,
   onNotify: (n) => outbox.push(n),
-  onCommit: () => { store.persist(); flushPush(); },
+  onCommit: () => { dirty = true; },
 });
+let dirty = false;
 function asActor(user, fn) {
   actor = user; core.resetCache();
   try { return fn(); } finally { actor = null; }
 }
+// Exécute une opération métier (synchrone, en mémoire), puis l'enregistre en base.
+// Une seule à la fois ; en cas d'erreur, rien n'est enregistré, la mémoire revient en arrière
+// et aucune notification ne part.
+function runMutation(user, fn) {
+  return store.exclusive(async () => {
+    dirty = false; outbox = [];
+    let result;
+    try { result = asActor(user, fn); } catch (e) {
+      outbox = []; store.reset(); core.resetCache();
+      if (e instanceof core.UserError) throw new HttpError(400, e.message);
+      throw e;
+    }
+    if (dirty) {
+      try { await store.persist(); } catch (e) { outbox = []; core.resetCache(); throw e; }
+      flushPush();
+    }
+    return result;
+  });
+}
+// Modification directe de l'état par le serveur (mots de passe), enregistrée de la même façon
+const writeDirect = (fn) => runMutation(null, () => { fn(); dirty = true; });
 const findUser = (id) => store.state.users.find((u) => u.id === id) || null;
 
 if (store.isEmpty()) {
   if (DEMO) {
-    store.replaceAll(await seedDemo());
+    await store.replaceAll(await seedDemo());
     console.log('Base créée avec les données de démonstration.');
   } else {
     // Un compte par membre du clan, mot de passe provisoire à changer à la première connexion.
     // La feuille des identifiants n'existe qu'une fois, dans DATA_DIR : à distribuer puis supprimer.
     const { state: initial, credentials } = await seedClan(ROSTER, auth.tempPassword);
-    store.replaceAll(initial);
+    await store.replaceAll(initial);
     const sheet = join(DATA_DIR, 'identifiants.txt');
     const ROLE_LABEL = { superadmin: 'Maître de clan', admin: 'Adjoint' };
     const lines = credentials.map((c) => [
@@ -85,22 +112,22 @@ if (store.isEmpty()) {
 }
 if (PROD && DEMO) console.warn('ATTENTION : mode démonstration actif en production (comptes publics). Mets DEMO=0.');
 
-function jobs() {
+async function jobs() {
   try {
-    asActor(null, () => {
+    await runMutation(null, () => {
       core.ensureUpcoming(); core.remindTournaments();
       const d = new Date();
       if (d.getDay() === 0 && d.getHours() >= 20) core.weeklyDigest(); // dimanche soir
     });
-  } catch (e) { console.error('Tâche planifiée', e); outbox = []; store.load(); }
-  sessions.purge();
+    await sessions.purge();
+  } catch (e) { console.error('Tâche planifiée', e); }
 }
-function dailyBackup() {
-  try { console.log('Sauvegarde :', store.backup(BACKUP_DIR, Number(env.BACKUP_KEEP) || 14)); } catch (e) { console.error('Sauvegarde impossible', e); }
+async function dailyBackup() {
+  try { console.log('Sauvegarde :', await store.exclusive(() => store.backup(BACKUP_DIR, Number(env.BACKUP_KEEP) || 14))); } catch (e) { console.error('Sauvegarde impossible', e); }
 }
-jobs();
+await jobs();
 setInterval(jobs, 36e5);
-if (env.BACKUPS !== '0') { dailyBackup(); setInterval(dailyBackup, 864e5); }
+if (env.BACKUPS !== '0') { await dailyBackup(); setInterval(dailyBackup, 864e5); }
 
 // ---------- Sécurité HTTP ----------
 const indexHtml = readFileSync(join(ROOT, 'index.html'), 'utf8');
@@ -172,7 +199,6 @@ function cookies(req) {
 const COOKIE = 'akt_sid';
 const setCookie = (req, token, maxAge) => `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${isHttps(req) || PROD ? '; Secure' : ''}`;
 
-class HttpError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
 const BANNED = new Set(['__proto__', 'constructor', 'prototype']);
 function readBody(req, limit = 1_000_000) {
   return new Promise((resolve, reject) => {
@@ -222,7 +248,7 @@ function checkArgs(spec, args) {
 
 async function api(req, res, url) {
   const sid = cookies(req)[COOKIE];
-  const uid = sessions.resolve(sid);
+  const uid = await sessions.resolve(sid);
   const user = uid ? findUser(uid) : null;
   const route = `${req.method} ${url.pathname}`;
 
@@ -244,11 +270,11 @@ async function api(req, res, url) {
     if (u.status === 'excluded') throw new HttpError(403, 'Ce compte a été exclu du clan.');
     if (u.status === 'refused') throw new HttpError(403, 'Ta demande d’inscription a été refusée.');
     auth.clear(kAcc);
-    const token = sessions.create(u.id, req.headers['user-agent']);
+    const token = await sessions.create(u.id, req.headers['user-agent']);
     return json(req, res, 200, { state: state(findUser(u.id)) }, { 'Set-Cookie': setCookie(req, token, auth.SESSION_DAYS * 86400) });
   }
   if (url.pathname === '/api/auth/logout') {
-    sessions.destroy(sid);
+    await sessions.destroy(sid);
     return json(req, res, 200, { state: state(null) }, { 'Set-Cookie': setCookie(req, '', 0) });
   }
   if (url.pathname === '/api/auth/register') {
@@ -259,9 +285,9 @@ async function api(req, res, url) {
     const passHash = await auth.hashPassword(String(body.password), salt);
     const f = {};
     for (const k of ['pseudo', 'login', 'email', 'firstName', 'lastName', 'uid', 'level', 'mode', 'specialty', 'availability', 'avatar']) if (body[k] != null) f[k] = k === 'avatar' ? body[k] : String(body[k]).slice(0, 200);
-    const u = runMutation(null, () => core.register(f, { passHash, salt }));
+    const u = await runMutation(null, () => core.register(f, { passHash, salt }));
     auth.hit(`reg:${ip}`);
-    const token = sessions.create(u.id, req.headers['user-agent']);
+    const token = await sessions.create(u.id, req.headers['user-agent']);
     return json(req, res, 200, { state: state(findUser(u.id)) }, { 'Set-Cookie': setCookie(req, token, auth.SESSION_DAYS * 86400) });
   }
   if (url.pathname === '/api/auth/password') {
@@ -272,12 +298,13 @@ async function api(req, res, url) {
     if (bad) throw new HttpError(400, bad);
     const salt = auth.newSalt();
     const passHash = await auth.hashPassword(String(body.next), salt);
-    const u = findUser(user.id);
-    Object.assign(u, { salt, passHash, mustChangePassword: false });
-    store.state.audit.push({ id: core.uid('au'), at: new Date().toISOString(), actorId: u.id, action: 'Mot de passe modifié', target: u.pseudo, details: 'Autres sessions déconnectées.' });
-    store.persist();
-    sessions.destroyOthers(u.id, sid);
-    return json(req, res, 200, { state: state(u) });
+    await writeDirect(() => {
+      const u = findUser(user.id);
+      Object.assign(u, { salt, passHash, mustChangePassword: false });
+      store.state.audit.push({ id: core.uid('au'), at: new Date().toISOString(), actorId: u.id, action: 'Mot de passe modifié', target: u.pseudo, details: 'Autres sessions déconnectées.' });
+    });
+    await sessions.destroyOthers(user.id, sid);
+    return json(req, res, 200, { state: state(findUser(user.id)) });
   }
   if (url.pathname === '/api/auth/admin-reset') {
     if (!user || !core.can('members.manage', user)) throw new HttpError(403, 'Action non autorisée pour ton rôle.');
@@ -287,27 +314,31 @@ async function api(req, res, url) {
     if (core.isStaff(target) && !user.roles.includes('superadmin')) throw new HttpError(403, 'Seul un super administrateur peut réinitialiser le compte d’un responsable.');
     const temp = auth.tempPassword();
     const salt = auth.newSalt();
-    Object.assign(target, { salt, passHash: await auth.hashPassword(temp, salt), mustChangePassword: true });
-    store.state.audit.push({ id: core.uid('au'), at: new Date().toISOString(), actorId: user.id, action: 'Mot de passe réinitialisé', target: target.pseudo, details: 'Mot de passe provisoire remis par un responsable, sessions fermées.' });
-    store.persist();
-    sessions.destroyOthers(target.id, '');
+    const passHash = await auth.hashPassword(temp, salt);
+    await writeDirect(() => {
+      const t = findUser(target.id);
+      Object.assign(t, { salt, passHash, mustChangePassword: true });
+      store.state.audit.push({ id: core.uid('au'), at: new Date().toISOString(), actorId: user.id, action: 'Mot de passe réinitialisé', target: t.pseudo, details: 'Mot de passe provisoire remis par un responsable, sessions fermées.' });
+    });
+    await sessions.destroyOthers(target.id, '');
     return json(req, res, 200, { temp, state: state(findUser(user.id)) });
   }
   if (url.pathname === '/api/push/subscribe') {
     if (!user) throw new HttpError(401, 'Connecte-toi pour continuer.');
-    const err = push.subscribe(user.id, body.subscription, req.headers['user-agent']);
+    const err = await push.subscribe(user.id, body.subscription, req.headers['user-agent']);
     if (err) throw new HttpError(400, err);
     return json(req, res, 200, { ok: true });
   }
   if (url.pathname === '/api/push/unsubscribe') {
-    if (user) push.unsubscribe(user.id, body.endpoint);
+    if (user) await push.unsubscribe(user.id, body.endpoint);
     return json(req, res, 200, { ok: true });
   }
   if (url.pathname === '/api/demo/reset') {
     if (!DEMO) throw new HttpError(404, 'Introuvable.');
     if (!user?.roles.includes('superadmin')) throw new HttpError(403, 'Réservé au super administrateur.');
-    store.replaceAll(await seedDemo());
-    jobs();
+    const fresh = await seedDemo();
+    await store.exclusive(() => store.replaceAll(fresh));
+    await jobs();
     return json(req, res, 200, { state: state(findUser(user.id)) });
   }
 
@@ -317,20 +348,12 @@ async function api(req, res, url) {
     if (user.mustChangePassword) throw new HttpError(403, 'Choisis d’abord ton mot de passe.');
     const args = body.args;
     if (!checkArgs(RPC[m[1]], args)) throw new HttpError(400, 'Paramètres invalides.');
-    const result = runMutation(user, () => core[m[1]](...args));
+    const result = await runMutation(user, () => core[m[1]](...args));
     return json(req, res, 200, { result: result && typeof result === 'object' && 'id' in result && 'registrations' in result ? { id: result.id } : result ?? null, state: state(findUser(user.id)) });
   }
   throw new HttpError(404, 'Introuvable.');
 }
 
-// Exécute une mutation métier ; toute erreur annule les changements en mémoire.
-function runMutation(user, fn) {
-  try { return asActor(user, fn); } catch (e) {
-    outbox = []; store.load(); core.resetCache();
-    if (e instanceof core.UserError) throw new HttpError(400, e.message);
-    throw e;
-  }
-}
 
 const server = http.createServer(async (req, res) => {
   secure(res, req);
@@ -347,6 +370,6 @@ const server = http.createServer(async (req, res) => {
 server.requestTimeout = 30_000;
 server.headersTimeout = 15_000;
 server.listen(PORT, HOST, () => console.log(`影 AaKATSUKI 影 · http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}${DEMO ? ' (démo)' : ''}`));
-const stop = () => { server.close(); store.sql.close(); process.exit(0); };
+const stop = () => { server.close(); store.exclusive(() => store.close()).finally(() => process.exit(0)); setTimeout(() => process.exit(0), 3000).unref(); };
 process.on('SIGTERM', stop);
 process.on('SIGINT', stop);

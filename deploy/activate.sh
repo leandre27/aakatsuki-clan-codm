@@ -9,6 +9,9 @@ cd "$APP_DIR"
 NEW="$APP_DIR/releases/$RELEASE"
 [ -d "$NEW" ] || { echo "Version introuvable : $NEW"; exit 1; }
 [ -f shared/.env ] || { echo "Fichier $APP_DIR/shared/.env manquant : lance d'abord deploy/setup-cloudpanel.sh"; exit 1; }
+if grep -qE '^DATABASE_URL=mysql://UTILISATEUR:' shared/.env; then
+  echo "Renseigne DATABASE_URL dans $APP_DIR/shared/.env (base MySQL créée dans CloudPanel), puis relance le déploiement."; exit 1
+fi
 
 # Node installé par CloudPanel (nvm) pour l'utilisateur du site
 export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"

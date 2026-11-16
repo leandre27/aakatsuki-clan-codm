@@ -34,32 +34,33 @@ export function checkPasswordPolicy(pw) {
 const sha = (t) => createHash('sha256').update(t).digest('hex');
 export const SESSION_DAYS = 30;
 
-export function sessions(sql) {
-  sql.exec(`CREATE TABLE IF NOT EXISTS sessions (
-    token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, user_agent TEXT)`);
-  sql.exec('CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id)');
-  const ins = sql.prepare('INSERT INTO sessions (token_hash, user_id, created_at, expires_at, user_agent) VALUES (?, ?, ?, ?, ?)');
-  const get = sql.prepare('SELECT user_id, expires_at FROM sessions WHERE token_hash = ?');
-  const del = sql.prepare('DELETE FROM sessions WHERE token_hash = ?');
-  const delUser = sql.prepare('DELETE FROM sessions WHERE user_id = ? AND token_hash <> ?');
-  const purge = sql.prepare('DELETE FROM sessions WHERE expires_at < ?');
+export async function sessions(db) {
+  if (db.dialect === 'mysql') {
+    await db.run(`CREATE TABLE IF NOT EXISTS sessions (
+      token_hash CHAR(64) NOT NULL PRIMARY KEY, user_id VARCHAR(64) NOT NULL, created_at BIGINT NOT NULL, expires_at BIGINT NOT NULL,
+      user_agent VARCHAR(200), INDEX sessions_user (user_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin`);
+  } else {
+    await db.run(`CREATE TABLE IF NOT EXISTS sessions (
+      token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, user_agent TEXT)`);
+    await db.run('CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id)');
+  }
   return {
-    create(userId, ua = '') {
+    async create(userId, ua = '') {
       const token = randomBytes(32).toString('base64url');
       const now = Date.now();
-      ins.run(sha(token), userId, now, now + SESSION_DAYS * 864e5, String(ua).slice(0, 200));
+      await db.run('INSERT INTO sessions (token_hash, user_id, created_at, expires_at, user_agent) VALUES (?, ?, ?, ?, ?)', [sha(token), userId, now, now + SESSION_DAYS * 864e5, String(ua).slice(0, 200)]);
       return token;
     },
-    resolve(token) {
+    async resolve(token) {
       if (!token || token.length > 100) return null;
-      const row = get.get(sha(token));
+      const [row] = await db.query('SELECT user_id, expires_at FROM sessions WHERE token_hash = ?', [sha(token)]);
       if (!row) return null;
-      if (row.expires_at < Date.now()) { del.run(sha(token)); return null; }
+      if (Number(row.expires_at) < Date.now()) { await db.run('DELETE FROM sessions WHERE token_hash = ?', [sha(token)]); return null; }
       return row.user_id;
     },
-    destroy(token) { if (token) del.run(sha(token)); },
-    destroyOthers(userId, keepToken) { delUser.run(userId, sha(keepToken || '')); },
-    purge() { purge.run(Date.now()); },
+    async destroy(token) { if (token) await db.run('DELETE FROM sessions WHERE token_hash = ?', [sha(token)]); },
+    async destroyOthers(userId, keepToken) { await db.run('DELETE FROM sessions WHERE user_id = ? AND token_hash <> ?', [userId, sha(keepToken || '')]); },
+    async purge() { await db.run('DELETE FROM sessions WHERE expires_at < ?', [Date.now()]); },
   };
 }
 

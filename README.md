@@ -2,17 +2,25 @@
 
 Application web mobile-first pour gérer le clan : inscriptions, membres, points, classements, tournois, récompenses, annonces, discipline et journal d'activité. Le blason du clan est affiché en relief 3D (Three.js) en page d'accueil.
 
-Serveur Node.js **sans aucune dépendance npm** : base SQLite intégrée à Node, mots de passe scrypt, sessions en cookie HttpOnly.
+Serveur Node.js avec une seule dépendance npm (`mysql2`, le pilote MySQL) : base **MySQL / MariaDB** en production, SQLite intégré à Node quand aucune base n'est configurée, mots de passe scrypt, sessions en cookie HttpOnly.
 
 ## Lancer en local
 
 Prérequis : Node.js 22.13 ou plus récent.
 
 ```bash
+npm install
+```
+
+```bash
 npm run dev
 ```
 
-Puis ouvrir http://localhost:3000. Au premier démarrage, la base `data/akatsuki.db` est créée avec les 27 membres du clan (liste dans `server/roster.js`) et la feuille `data/identifiants.txt` donne l'identifiant et le mot de passe provisoire de chacun.
+Puis ouvrir http://localhost:3000.
+
+**Base de données.** Si le fichier `.env` (jamais envoyé sur GitHub) contient `DATABASE_URL=mysql://utilisateur:motdepasse@127.0.0.1:3306/base`, le site utilise MySQL. Sinon il crée une base SQLite dans `data/akatsuki.db`, sans rien installer. Les tables sont créées toutes seules au premier démarrage, dans les deux cas.
+
+Au premier démarrage, la base est créée avec les 27 membres du clan (liste dans `server/roster.js`) et la feuille `data/identifiants.txt` donne l'identifiant et le mot de passe provisoire de chacun.
 
 ### Comptes des membres
 
@@ -44,6 +52,12 @@ En mode démo, la page Connexion affiche deux boutons d'accès direct, et le sup
 ```bash
 npm test
 ```
+
+```bash
+npm run test:mysql
+```
+
+`npm test` utilise SQLite. `npm run test:mysql` passe les mêmes tests sur la base MySQL de `TEST_DATABASE_URL` (dans `.env`), qui est **vidée** à chaque lancement : donne-lui une base réservée aux tests. La CI fait les deux à chaque push, avec un utilisateur MySQL sans droits d'administration, comme chez un hébergeur.
 
 24 tests d'intégration démarrent un vrai serveur sur une base temporaire et vérifient notamment : aucune fuite de hachés ou d'e-mails, refus d'attribution de points par un membre, rôles non modifiables par soi-même, anti-doublon, historique en ajout seul, débit des récompenses, CSRF, limitation des tentatives de connexion, persistance après redémarrage, et les notifications push de bout en bout (un faux service de push reçoit le message, le test le déchiffre comme un téléphone et vérifie la signature).
 
@@ -109,12 +123,13 @@ Fonctionnement : norme Web Push (chiffrement RFC 8291, identification VAPID RFC 
 2. copie la nouvelle version sur le VPS dans `~/aakatsuki/releases/<commit>` ;
 3. bascule `~/aakatsuki/current` dessus, redémarre le site avec pm2 et vérifie que c'est bien la nouvelle version qui répond. Sinon, il revient tout seul à la version précédente. Les 5 dernières versions sont gardées.
 
-Les données (base, sauvegardes, clés des notifications) sont dans `~/aakatsuki/shared/data` : un déploiement n'y touche jamais.
+Les données sont dans la base MySQL, et les sauvegardes et clés des notifications dans `~/aakatsuki/shared/data` : un déploiement n'y touche jamais. Le pilote MySQL est installé par GitHub et envoyé avec chaque version : rien à installer sur le VPS.
 
 ### Une seule fois : créer le site dans CloudPanel
 
 1. **Sites → Add Site → Create a Node.js Site** : ton domaine, **Node.js 22**, **App Port 3000**, un utilisateur de site (par exemple `aakatsuki`).
 2. Dans le site, **SSL/TLS → Actions → New Let's Encrypt Certificate**, une fois le domaine pointé vers l'IP du VPS. Le HTTPS est obligatoire pour l'appli installable et les notifications.
+3. Dans le site, **Databases → Add Database** : un nom de base (par exemple `aakatsuki`), un utilisateur et un mot de passe. Garde-les pour l'étape suivante. Les tables sont créées par le site à son premier démarrage.
 
 CloudPanel sert alors le domaine en HTTPS et transmet tout au site sur `127.0.0.1:3000`.
 
@@ -132,7 +147,11 @@ ssh root@TON_VPS bash /root/setup-cloudpanel.sh aakatsuki
 
 Le script vérifie Node.js 22.13 ou plus, installe pm2 et le redémarrage automatique au boot, crée `~/aakatsuki` et son fichier de réglages `shared/.env`, crée une clé SSH réservée à GitHub, puis affiche les valeurs des secrets. Si le port de l'appli n'est pas 3000 ou si SSH n'écoute pas sur 22 : `bash /root/setup-cloudpanel.sh aakatsuki 3000 2222`.
 
-Modifie ensuite `/home/aakatsuki/aakatsuki/shared/.env` : `TZ` (fuseau du clan) et `PUSH_SUBJECT` (adresse de contact).
+Modifie ensuite `/home/aakatsuki/aakatsuki/shared/.env` :
+- `DATABASE_URL` : `mysql://UTILISATEUR:MOT_DE_PASSE@127.0.0.1:3306/NOM_DE_LA_BASE`, avec les accès créés dans CloudPanel. Si le mot de passe contient `@ : / # ? %`, encode-les (`%40 %3A %2F %23 %3F %25`). Tant que cette ligne n'est pas remplie, le déploiement s'arrête avec un message clair.
+- `TZ` (fuseau du clan) et `PUSH_SUBJECT` (adresse de contact).
+
+**Historique en ajout seul.** Le site refuse toujours de modifier ou supprimer une opération de points ou une ligne du journal. En plus, il essaie de poser des déclencheurs MySQL qui bloquent aussi toute modification faite à la main. Chez la plupart des hébergeurs, MySQL ne l'autorise pas à un utilisateur ordinaire : le journal du site l'indique, et la protection de l'application reste active. Pour les activer quand même (en root sur le VPS) : `mysql -e "SET PERSIST log_bin_trust_function_creators = 1"`, puis `pm2 restart aakatsuki`.
 
 ### Une seule fois : les secrets GitHub
 
@@ -174,7 +193,15 @@ Le `Dockerfile` reste disponible pour un hébergement avec Docker : `docker buil
 
 ### Sauvegardes
 
-Une copie complète de la base est faite au démarrage puis toutes les 24 heures dans `DATA_DIR/backups/` (14 conservées, `BACKUP_KEEP` pour changer). Pour restaurer : arrêter le serveur, remplacer `akatsuki.db` par une sauvegarde, supprimer `akatsuki.db-wal` et `akatsuki.db-shm`, redémarrer. Copie aussi ces sauvegardes ailleurs (stockage externe) : si le disque du serveur est perdu, elles le sont aussi.
+Au démarrage puis toutes les 24 heures, le site écrit une sauvegarde dans `DATA_DIR/backups/` (14 conservées, `BACKUP_KEEP` pour changer) :
+- **MySQL** : export compressé de toutes les données, `akatsuki-AAAA-MM-JJ-HH-MM.json.gz`. Pour restaurer, arrête le site (`pm2 stop aakatsuki`), puis, depuis `~/aakatsuki/current` :
+  ```bash
+  node --env-file=../shared/.env server/restore.js ../shared/data/backups/akatsuki-AAAA-MM-JJ-HH-MM.json.gz --oui
+  ```
+  et `pm2 start aakatsuki`. Sans `--oui`, la commande montre seulement ce que contient la sauvegarde.
+- **SQLite** : copie complète `akatsuki-….db`. Pour restaurer : arrêter le serveur, remplacer `akatsuki.db` par la copie, supprimer `akatsuki.db-wal` et `akatsuki.db-shm`, redémarrer.
+
+Active aussi les sauvegardes de CloudPanel (Backups) vers un stockage externe : si le disque du VPS est perdu, les sauvegardes locales le sont aussi.
 
 ## Structure
 
@@ -185,7 +212,9 @@ js/api.js            client : lit l'état envoyé par le serveur, envoie les éc
 js/main.js, js/ui.js, js/views/   routeur, composants et pages
 js/scene3d.js        scène Three.js (blason en relief, nuages, lune, braises)
 server/index.js      serveur HTTP : API, sessions, fichiers, en-têtes de sécurité, tâches planifiées
-server/store.js      SQLite : une table par entité, écriture transactionnelle, sauvegardes
+server/db.js         accès à la base : MySQL / MariaDB (DATABASE_URL) ou SQLite
+server/store.js      une table par entité, écriture transactionnelle, sauvegardes
+server/restore.js    restauration d'une sauvegarde
 server/auth.js       scrypt, sessions, limitation des tentatives
 server/snapshot.js   filtrage des données par visiteur
 server/roster.js     membres du clan créés au premier démarrage
@@ -199,7 +228,7 @@ Tâches automatiques (toutes les heures) : création des séances des deux semai
 
 ## Limites connues et suites possibles
 
-- Un seul serveur : la limitation des tentatives est en mémoire, et SQLite convient largement à un clan (des milliers d'opérations). Pour plusieurs serveurs, il faudrait passer à PostgreSQL ; `server/store.js` est le seul fichier à remplacer.
+- Un seul serveur à la fois : l'état du clan est gardé en mémoire et la limitation des tentatives aussi. Ne lance pas deux copies du site sur la même base. C'est largement suffisant pour un clan.
 - L'état complet autorisé est renvoyé après chaque action (compressé). C'est adapté à quelques centaines de membres ; au-delà, paginer l'historique des points.
 - Mot de passe oublié : un responsable (permission « gérer les membres ») génère un mot de passe provisoire depuis la fiche du membre. La réinitialisation automatique par e-mail n'est pas faite (il faudrait un service d'e-mail comme Resend ou Brevo).
 - Intégration Discord ou WhatsApp pour les notifications : non faite.

@@ -5,7 +5,7 @@
 #
 # - vérifie Node.js 22.13+ pour l'utilisateur du site (l'installe avec nvm si besoin)
 # - installe pm2 et le redémarrage automatique au boot
-# - crée ~/aakatsuki (versions, données, réglages .env)
+# - crée ~/aakatsuki (versions, données, réglages .env avec l'accès à la base MySQL)
 # - crée une clé SSH réservée à GitHub Actions et affiche les secrets à copier dans GitHub
 set -euo pipefail
 SITE_USER=${1:?Usage : bash setup-cloudpanel.sh <utilisateur-du-site> [port-appli] [port-ssh]}
@@ -40,6 +40,9 @@ HOST=127.0.0.1
 PORT=$APP_PORT
 TRUST_PROXY=1
 DATA_DIR=$APP_DIR/shared/data
+# Base MySQL créée dans CloudPanel (Databases > Add Database). Caractères spéciaux du mot de passe
+# à encoder : @ → %40, : → %3A, / → %2F, # → %23, ? → %3F, % → %25
+DATABASE_URL=mysql://UTILISATEUR:MOT_DE_PASSE@127.0.0.1:3306/NOM_DE_LA_BASE
 # Fuseau horaire du clan : séances, rappels, classement du dimanche
 TZ=Africa/Abidjan
 # Contact transmis aux services de notifications (obligatoire pour les iPhone)
@@ -94,6 +97,6 @@ echo "==========================================================================
 rm -rf "$TMP"
 echo
 echo "Ensuite :"
-echo " 1. Modifie $APP_DIR/shared/.env (TZ, PUSH_SUBJECT)."
+echo " 1. Modifie $APP_DIR/shared/.env : DATABASE_URL (base MySQL CloudPanel), TZ, PUSH_SUBJECT."
 echo " 2. Dans CloudPanel, le port de l'appli du site doit être $APP_PORT."
 echo " 3. Ajoute les secrets dans GitHub et relance le workflow CI/CD."

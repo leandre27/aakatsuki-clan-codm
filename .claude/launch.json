@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "akatsuki",
-      "runtimeExecutable": "node",
-      "runtimeArgs": ["--disable-warning=ExperimentalWarning", "server/index.js"],
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
       "port": 3000
     }
   ]

@@ -1,7 +1,8 @@
 FROM node:22-alpine
 ENV NODE_ENV=production DATA_DIR=/data PORT=3000 TRUST_PROXY=1
 WORKDIR /app
-COPY package.json ./
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
 COPY index.html sw.js manifest.webmanifest ./
 COPY css ./css
 COPY js ./js

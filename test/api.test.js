@@ -20,6 +20,15 @@ const mock = http.createServer((req, res) => {
   req.on('end', () => { received.push({ path: req.url, headers: req.headers, body: Buffer.concat(chunks) }); res.writeHead(req.url.includes('gone') ? 410 : 201); res.end(); });
 });
 
+// Base testée : MySQL si TEST_DATABASE_URL est défini (npm run test:mysql, et en CI), sinon SQLite
+const MYSQL_URL = process.env.TEST_DATABASE_URL || '';
+async function resetMySQL() {
+  const mysql = await import('mysql2/promise');
+  const c = await mysql.createConnection(MYSQL_URL);
+  const [rows] = await c.query('SELECT TABLE_NAME AS t FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()');
+  for (const { t } of rows) await c.query(`DROP TABLE \`${t}\``);
+  return c;
+}
 const PORT = PORT_BASE();
 const BASE = `http://127.0.0.1:${PORT}`;
 const DIR = mkdtempSync(join(tmpdir(), 'akt-test-'));
@@ -27,14 +36,18 @@ let proc;
 
 function start() {
   return new Promise((resolve, reject) => {
-    proc = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', 'server/index.js'], { env: { ...process.env, PORT: String(PORT), DATA_DIR: DIR, DEMO: '1', BACKUPS: '0', NODE_ENV: 'test', PUSH_TEST_PREFIX: `http://127.0.0.1:${MOCK_PORT}/push/` }, stdio: ['ignore', 'pipe', 'pipe'] });
+    proc = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', 'server/index.js'], { env: { ...process.env, DATABASE_URL: MYSQL_URL, PORT: String(PORT), DATA_DIR: DIR, DEMO: '1', BACKUPS: '0', NODE_ENV: 'test', PUSH_TEST_PREFIX: `http://127.0.0.1:${MOCK_PORT}/push/` }, stdio: ['ignore', 'pipe', 'pipe'] });
     proc.stdout.on('data', (d) => { if (String(d).includes('http://')) resolve(); });
     proc.stderr.on('data', (d) => process.stderr.write(d));
     proc.on('exit', (c) => reject(new Error(`serveur arrêté (${c})`)));
   });
 }
 const stop = () => new Promise((r) => { proc.removeAllListeners('exit'); proc.on('exit', r); proc.kill('SIGTERM'); });
-before(async () => { await new Promise((r) => mock.listen(MOCK_PORT, '127.0.0.1', r)); await start(); });
+before(async () => {
+  if (MYSQL_URL) await (await resetMySQL()).end();
+  await new Promise((r) => mock.listen(MOCK_PORT, '127.0.0.1', r));
+  await start();
+});
 after(async () => { mock.close(); await stop(); rmSync(DIR, { recursive: true, force: true }); });
 
 class Client {
@@ -133,7 +146,18 @@ test('attribution de points par un admin, sans doublon', async () => {
   assert.deepEqual(r2.body.result.done, []); assert.deepEqual(r2.body.result.skipped, ['Yoru']);
 });
 
-test('l’historique des points est en ajout seul (déclencheurs SQL)', () => {
+test('l’historique des points est en ajout seul (déclencheurs SQL)', async (t) => {
+  if (MYSQL_URL) {
+    const mysql = await import('mysql2/promise');
+    const c = await mysql.createConnection(MYSQL_URL);
+    try {
+      const [trg] = await c.query("SELECT COUNT(*) AS n FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE()");
+      if (!trg[0].n) return t.skip('déclencheurs non autorisés par ce serveur MySQL (log_bin_trust_function_creators) : ajout seul garanti par l’application');
+      await assert.rejects(c.query("UPDATE point_transactions SET data = JSON_SET(data, '$.points', 9999)"), /ajout seul/);
+      await assert.rejects(c.query('DELETE FROM audit_logs'), /ajout seul/);
+    } finally { await c.end(); }
+    return;
+  }
   const db = new DatabaseSync(join(DIR, 'akatsuki.db'));
   assert.throws(() => db.exec("UPDATE point_transactions SET data = json_set(data, '$.points', 9999)"), /ajout seul/);
   assert.throws(() => db.exec('DELETE FROM point_transactions'), /ajout seul/);
@@ -315,7 +339,7 @@ test('les données survivent à un redémarrage', async () => {
 test('production : un compte par membre du clan, identifiants à distribuer', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'akt-prod-'));
   const port = PORT + 50;
-  const p = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', 'server/index.js'], { env: { ...process.env, NODE_ENV: 'production', HOST: '127.0.0.1', DATA_DIR: dir, PORT: String(port), BACKUPS: '0', DEMO: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const p = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', 'server/index.js'], { env: { ...process.env, DATABASE_URL: '', NODE_ENV: 'production', HOST: '127.0.0.1', DATA_DIR: dir, PORT: String(port), BACKUPS: '0', DEMO: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
   try {
     await new Promise((res, rej) => { p.stdout.on('data', (d) => String(d).includes('http://') && res()); p.on('exit', rej); });
     const sheet = join(dir, 'identifiants.txt');

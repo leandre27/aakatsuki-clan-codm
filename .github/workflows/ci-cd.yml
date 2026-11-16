@@ -21,13 +21,32 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: aakatsuki_test
+          MYSQL_USER: aakatsuki
+          MYSQL_PASSWORD: test-only
+          MYSQL_ROOT_PASSWORD: test-only-root
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -ptest-only-root"
+          --health-interval=5s --health-timeout=5s --health-retries=20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
-      - run: npm test
+          cache: npm
+      - run: npm ci
+      - name: Tests avec SQLite
+        run: npm test
+      - name: Tests avec MySQL (utilisateur sans droits d'administration, comme chez un hébergeur)
+        env:
+          TEST_DATABASE_URL: mysql://aakatsuki:test-only@127.0.0.1:3306/aakatsuki_test
+        run: node --disable-warning=ExperimentalWarning --test --test-concurrency=1 test/*.test.js
 
   deploy:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
@@ -43,6 +62,12 @@ jobs:
       RELEASE: ${{ github.sha }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+      # Dépendances de production (pilote MySQL) installées ici et envoyées avec la version
+      - run: npm ci --omit=dev
       - name: Vérifier la configuration
         run: |
           if [ -z "$VPS_HOST" ] || [ -z "$VPS_USER" ]; then
@@ -62,7 +87,7 @@ jobs:
       - name: Envoyer la nouvelle version
         run: |
           # Seulement les fichiers du site : ni tests, ni données, ni outils de déploiement
-          tar czf - package.json index.html sw.js manifest.webmanifest css js assets server \
+          tar czf - package.json package-lock.json node_modules index.html sw.js manifest.webmanifest css js assets server \
             | ssh -i ~/.ssh/deploy -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" \
               "set -e; R=$APP_DIR/releases/$RELEASE; rm -rf \$R; mkdir -p \$R; tar xzf - -C \$R"
       - name: Mettre en service
