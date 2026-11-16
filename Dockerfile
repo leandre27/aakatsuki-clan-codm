@@ -1,4 +1,4 @@
-FROM node:22-alpine
+FROM node:26-alpine
 ENV NODE_ENV=production DATA_DIR=/data PORT=3000 TRUST_PROXY=1
 WORKDIR /app
 COPY package.json ./
