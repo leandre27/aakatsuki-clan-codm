@@ -102,28 +102,37 @@ Fonctionnement : norme Web Push (chiffrement RFC 8291, identification VAPID RFC 
 - **En-têtes** : Content-Security-Policy stricte (aucun script en ligne hors importmap hachée), HSTS en HTTPS, `nosniff`, interdiction d'intégration en iframe.
 - **Fichiers** : seuls `index.html`, `css/`, `js/` et `assets/` sont servis. Le code serveur et la base ne sont jamais accessibles.
 
-## Mettre en ligne (VPS + GitHub Actions)
+## Mettre en ligne (VPS CloudPanel + GitHub Actions)
 
 À chaque push sur `main`, le workflow `.github/workflows/ci-cd.yml` :
 1. lance les tests (aussi sur chaque pull request) ;
-2. construit l'image Docker et la publie dans le registre privé de GitHub (`ghcr.io/<compte>/<dépôt>`) ;
-3. se connecte au VPS en SSH, récupère l'image, redémarre le site et vérifie qu'il répond. Si le site ne répond pas en une minute, il revient tout seul à la version précédente.
+2. copie la nouvelle version sur le VPS dans `~/aakatsuki/releases/<commit>` ;
+3. bascule `~/aakatsuki/current` dessus, redémarre le site avec pm2 et vérifie que c'est bien la nouvelle version qui répond. Sinon, il revient tout seul à la version précédente. Les 5 dernières versions sont gardées.
 
-La base de données reste dans le volume Docker `aakatsuki-data` : un déploiement ne touche jamais aux données.
+Les données (base, sauvegardes, clés des notifications) sont dans `~/aakatsuki/shared/data` : un déploiement n'y touche jamais.
+
+### Une seule fois : créer le site dans CloudPanel
+
+1. **Sites → Add Site → Create a Node.js Site** : ton domaine, **Node.js 22**, **App Port 3000**, un utilisateur de site (par exemple `aakatsuki`).
+2. Dans le site, **SSL/TLS → Actions → New Let's Encrypt Certificate**, une fois le domaine pointé vers l'IP du VPS. Le HTTPS est obligatoire pour l'appli installable et les notifications.
+
+CloudPanel sert alors le domaine en HTTPS et transmet tout au site sur `127.0.0.1:3000`.
 
 ### Une seule fois : préparer le VPS
 
+Depuis le dossier du projet, envoie le script, puis lance-le en root avec le nom de l'utilisateur du site :
+
 ```bash
-scp deploy/setup-vps.sh root@TON_VPS:/root/
+scp deploy/setup-cloudpanel.sh root@TON_VPS:/root/
 ```
 
 ```bash
-ssh root@TON_VPS bash /root/setup-vps.sh
+ssh root@TON_VPS bash /root/setup-cloudpanel.sh aakatsuki
 ```
 
-Le script installe Docker s'il manque, crée l'utilisateur `deploy` (celui qu'utilise GitHub) avec une clé SSH dédiée, crée `/opt/aakatsuki/.env`, puis affiche les valeurs des secrets. Modifie ensuite `/opt/aakatsuki/.env` sur le VPS (`TZ`, `PUSH_SUBJECT`).
+Le script vérifie Node.js 22.13 ou plus, installe pm2 et le redémarrage automatique au boot, crée `~/aakatsuki` et son fichier de réglages `shared/.env`, crée une clé SSH réservée à GitHub, puis affiche les valeurs des secrets. Si le port de l'appli n'est pas 3000 ou si SSH n'écoute pas sur 22 : `bash /root/setup-cloudpanel.sh aakatsuki 3000 2222`.
 
-Attention : l'utilisateur `deploy` est dans le groupe `docker`, ce qui revient à des droits administrateur sur le VPS. Sa clé ne doit exister que dans les secrets GitHub.
+Modifie ensuite `/home/aakatsuki/aakatsuki/shared/.env` : `TZ` (fuseau du clan) et `PUSH_SUBJECT` (adresse de contact).
 
 ### Une seule fois : les secrets GitHub
 
@@ -131,43 +140,37 @@ Dans le dépôt : Settings → Environments → New environment `production`, pu
 
 | Secret | Valeur |
 |---|---|
-| `VPS_HOST` | IP ou nom du VPS |
-| `VPS_USER` | `deploy` |
+| `VPS_HOST` | IP du VPS |
+| `VPS_USER` | l'utilisateur du site CloudPanel |
 | `VPS_SSH_KEY` | la clé privée affichée par le script |
 | `VPS_KNOWN_HOSTS` | les lignes d'empreinte affichées par le script |
 | `VPS_PORT` | seulement si SSH n'écoute pas sur le port 22 |
 
-Facultatif : une variable `APP_DIR` si le site n'est pas dans `/opt/aakatsuki`. Dans l'environnement `production`, tu peux aussi exiger ton approbation avant chaque mise en ligne (« Required reviewers »).
+Facultatif : une variable `APP_DIR` si le site n'est pas dans `~/aakatsuki`. Tu peux aussi exiger ton approbation avant chaque mise en ligne (« Required reviewers » dans l'environnement `production`).
 
-### HTTPS et nom de domaine
-
-Le site écoute seulement en local sur le VPS : `127.0.0.1:3000` (`APP_PORT` dans `.env` pour changer). Ton proxy HTTPS le sert sur ton domaine. Exemple avec Caddy, qui obtient le certificat tout seul :
-
-```
-clan.mondomaine.com {
-	reverse_proxy 127.0.0.1:3000
-}
-```
-
-Avec Nginx, transmets les en-têtes `Host`, `X-Forwarded-For` et `X-Forwarded-Proto`. Le HTTPS est obligatoire pour l'appli installable et les notifications.
+Puis relance le workflow : Actions → CI/CD → Run workflow.
 
 ### Premier démarrage en ligne
 
-La base est créée avec un compte par membre de `server/roster.js`. Les mots de passe provisoires sont nouveaux, différents de ceux de ton ordinateur. Pour lire la feuille, puis la supprimer une fois les accès distribués :
+La base est créée avec un compte par membre de `server/roster.js`. Les mots de passe provisoires sont nouveaux, différents de ceux de ton ordinateur. Lis la feuille, distribue les accès, puis supprime-la :
 
 ```bash
-ssh root@TON_VPS "cd /opt/aakatsuki && docker compose exec app cat /data/identifiants.txt"
+ssh root@TON_VPS cat /home/aakatsuki/aakatsuki/shared/data/identifiants.txt
 ```
 
 ```bash
-ssh root@TON_VPS "cd /opt/aakatsuki && docker compose exec app rm /data/identifiants.txt"
+ssh root@TON_VPS rm /home/aakatsuki/aakatsuki/shared/data/identifiants.txt
 ```
 
-Garde aussi une copie de `/data/vapid.json` : sans lui, tous les membres devraient réactiver les notifications.
+Garde aussi une copie de `shared/data/vapid.json` : sans lui, tous les membres devraient réactiver les notifications.
 
 ### Commandes utiles sur le VPS
 
-Dans `/opt/aakatsuki` : `docker compose logs -f app` (journal), `docker compose ps` (état), `docker compose restart app` (redémarrer).
+Connecté avec l'utilisateur du site : `pm2 logs aakatsuki` (journal), `pm2 status` (état), `pm2 restart aakatsuki` (redémarrer).
+
+### Sans CloudPanel
+
+Le `Dockerfile` reste disponible pour un hébergement avec Docker : `docker build -t aakatsuki .` puis `docker run -d --env-file .env -p 127.0.0.1:3000:3000 -v aakatsuki-data:/data aakatsuki`.
 
 ### Sauvegardes
 
@@ -188,8 +191,8 @@ server/snapshot.js   filtrage des données par visiteur
 server/roster.js     membres du clan créés au premier démarrage
 server/seed.js       comptes du clan / données de démonstration
 test/api.test.js     tests d'intégration
-.github/workflows/   CI/CD : tests, image Docker, déploiement sur le VPS
-deploy/              préparation du VPS, docker compose, script de mise à jour
+.github/workflows/   CI/CD : tests, puis déploiement sur le VPS
+deploy/              préparation du VPS CloudPanel, mise en service d'une version
 ```
 
 Tâches automatiques (toutes les heures) : création des séances des deux semaines à venir à partir du calendrier type, rappel des tournois 24 heures avant, purge des sessions expirées.

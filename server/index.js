@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
-import { join, resolve, dirname, extname } from 'node:path';
+import { join, resolve, dirname, extname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as core from '../js/core.js';
 import { openStore } from './store.js';
@@ -23,6 +23,8 @@ const HOST = env.HOST || (PROD ? '0.0.0.0' : '127.0.0.1');
 const TRUST_PROXY = env.TRUST_PROXY === '1';
 const DATA_DIR = resolve(env.DATA_DIR || join(ROOT, 'data'));
 const BACKUP_DIR = join(DATA_DIR, 'backups');
+// Nom du dossier de la version en service (déploiement : releases/<commit>), vérifié après chaque mise en ligne
+const RELEASE = basename(ROOT);
 const DEMO_ACCOUNTS = [
   { label: 'Membre', login: 'yoru', password: 'Membre2026!' },
   { label: 'Super admin', login: 'kurogane', password: 'Akatsuki2026!' },
@@ -224,7 +226,7 @@ async function api(req, res, url) {
   const user = uid ? findUser(uid) : null;
   const route = `${req.method} ${url.pathname}`;
 
-  if (route === 'GET /api/health') return json(req, res, 200, { ok: true });
+  if (route === 'GET /api/health') return json(req, res, 200, { ok: true, release: RELEASE });
   if (route === 'GET /api/state') return json(req, res, 200, { state: state(user) });
   if (req.method !== 'POST') throw new HttpError(405, 'Méthode non autorisée.');
   if (!sameOrigin(req)) throw new HttpError(403, 'Origine refusée.');
