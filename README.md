@@ -153,6 +153,20 @@ Modifie ensuite `/home/aakatsuki/aakatsuki/shared/.env` :
 
 **Historique en ajout seul.** Le site refuse toujours de modifier ou supprimer une opération de points ou une ligne du journal. En plus, il essaie de poser des déclencheurs MySQL qui bloquent aussi toute modification faite à la main. Chez la plupart des hébergeurs, MySQL ne l'autorise pas à un utilisateur ordinaire : le journal du site l'indique, et la protection de l'application reste active. Pour les activer quand même (en root sur le VPS) : `mysql -e "SET PERSIST log_bin_trust_function_creators = 1"`, puis `pm2 restart aakatsuki`.
 
+### Mise en ligne manuelle depuis le VPS (sans GitHub Actions)
+
+Avec l'utilisateur du site, clone le dépôt une fois, puis lance le script à chaque mise à jour :
+
+```bash
+git clone https://github.com/leandre27/aakatsuki-clan-codm.git ~/source
+```
+
+```bash
+cd ~/source && bash deploy/deploy-from-clone.sh
+```
+
+Le script récupère la dernière version (`git pull`), installe le pilote MySQL, puis la met en service comme le ferait GitHub Actions, avec la même vérification et le même retour arrière.
+
 ### Une seule fois : les secrets GitHub
 
 Dans le dépôt : Settings → Environments → New environment `production`, puis ajoute ces secrets :
@@ -221,7 +235,7 @@ server/roster.js     membres du clan créés au premier démarrage
 server/seed.js       comptes du clan / données de démonstration
 test/api.test.js     tests d'intégration
 .github/workflows/   CI/CD : tests, puis déploiement sur le VPS
-deploy/              préparation du VPS CloudPanel, mise en service d'une version
+deploy/              préparation du VPS CloudPanel, mise en service d'une version, mise en ligne manuelle
 ```
 
 Tâches automatiques (toutes les heures) : création des séances des deux semaines à venir à partir du calendrier type, rappel des tournois 24 heures avant, purge des sessions expirées.
