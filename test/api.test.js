@@ -197,6 +197,10 @@ test('inscription : mot de passe robuste exigé, compte en attente sans droits',
 test('réinitialisation du mot de passe par un responsable', async () => {
   assert.equal((await member.req('/api/auth/admin-reset', { userId: 'u8' })).status, 403);
   assert.equal((await admin.req('/api/auth/admin-reset', { userId: 'u1' })).status, 400);
+  // Un responsable du recrutement ne peut pas réinitialiser un administrateur (prise de contrôle)
+  const rec = new Client();
+  assert.equal((await rec.req('/api/auth/login', { login: 'tenma', password: (await admin.req('/api/auth/admin-reset', { userId: 'u6' })).body.temp })).status, 200);
+  assert.equal((await rec.req('/api/auth/admin-reset', { userId: 'u2' })).status, 403);
   const r = await admin.req('/api/auth/admin-reset', { userId: 'u8' });
   assert.equal(r.status, 200);
   assert.match(r.body.temp, /^[A-Za-z]{10}\d{2}$/);

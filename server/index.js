@@ -281,7 +281,8 @@ async function api(req, res, url) {
     if (!user || !core.can('members.manage', user)) throw new HttpError(403, 'Action non autorisée pour ton rôle.');
     const target = findUser(String(body.userId || ''));
     if (!target || target.id === user.id) throw new HttpError(400, 'Membre introuvable.');
-    if (target.roles.includes('superadmin') && !user.roles.includes('superadmin')) throw new HttpError(403, 'Seul un super administrateur peut réinitialiser ce compte.');
+    // Un responsable ne peut pas prendre la main sur un compte qui a des droits : seuls les super administrateurs le peuvent
+    if (core.isStaff(target) && !user.roles.includes('superadmin')) throw new HttpError(403, 'Seul un super administrateur peut réinitialiser le compte d’un responsable.');
     const temp = auth.tempPassword();
     const salt = auth.newSalt();
     Object.assign(target, { salt, passHash: await auth.hashPassword(temp, salt), mustChangePassword: true });
