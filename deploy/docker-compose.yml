@@ -1,0 +1,21 @@
+# Site 影 AaKATSUKI 影 sur le VPS. L'image est choisie par le déploiement (variable IMAGE).
+# Le site écoute seulement en local (127.0.0.1:3000) : ton proxy HTTPS (Caddy, Nginx…) le sert sur ton domaine.
+services:
+  app:
+    image: ${IMAGE:?IMAGE manquante}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      DATA_DIR: /data
+      PORT: 3000
+    ports:
+      - "127.0.0.1:${APP_PORT:-3000}:3000"
+    volumes:
+      - aakatsuki-data:/data
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+volumes:
+  aakatsuki-data:

@@ -1,0 +1,25 @@
+{
+  "id": "/",
+  "name": "影 AaKATSUKI 影",
+  "short_name": "AaKATSUKI",
+  "description": "Le clan Call of Duty Mobile : points, classements, tournois et récompenses.",
+  "lang": "fr",
+  "dir": "ltr",
+  "start_url": "/?source=pwa#/base",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b0b0d",
+  "theme_color": "#0b0b0d",
+  "categories": ["games", "social"],
+  "icons": [
+    { "src": "/assets/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/assets/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Classement", "url": "/#/classement", "icons": [{ "src": "/assets/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Tournois", "url": "/#/tournois", "icons": [{ "src": "/assets/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Récompenses", "url": "/#/recompenses", "icons": [{ "src": "/assets/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "name": "aakatsuki-clan",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Plateforme de gestion du clan 影 AaKATSUKI 影 (Call of Duty Mobile)",
+  "type": "module",
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "dev": "node --disable-warning=ExperimentalWarning server/index.js",
+    "start": "NODE_ENV=production node --disable-warning=ExperimentalWarning server/index.js",
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js"
+  }
+}

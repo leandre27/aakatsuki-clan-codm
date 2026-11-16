@@ -1,0 +1,6 @@
+data/
+node_modules/
+.env
+data-demo/
+.claude/settings.local.json
+.DS_Store
