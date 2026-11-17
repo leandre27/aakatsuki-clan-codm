@@ -38,6 +38,40 @@ export function firstPassword() {
   };
 }
 
+// ---------- Annonces ----------
+const AUDIENCE = { all: 'Tout le clan', MJ: 'Multijoueur', BR: 'Battle Royale', staff: 'Encadrement' };
+export function announcements({ query, rerender }) {
+  const me = api.me();
+  const all = api.announcementsFor();
+  const f = query.f || 'all';
+  const list = f === 'pinned' ? all.filter((a) => a.pinned) : f === 'new' ? all.filter(api.isAnnNew) : all;
+  const nNew = all.filter(api.isAnnNew).length;
+  const chips = [['all', 'Toutes', all.length], ['pinned', 'Épinglées', all.filter((a) => a.pinned).length], ...(me ? [['new', 'Nouvelles', nNew]] : [])];
+  const card = (a) => {
+    const by = api.user(a.authorId);
+    return `<li class="${a.pinned ? 'pinned' : ''} ${api.isAnnNew(a) ? 'is-new' : ''} ${query.id === a.id ? 'is-target' : ''}" id="ann-${esc(a.id)}">
+      <div class="ann-meta">${api.isAnnNew(a) ? '<span class="ann-new">Nouveau</span>' : ''}${a.pinned ? '<span class="pill">Épinglée</span>' : ''}${a.audience !== 'all' ? `<span class="pill">${esc(AUDIENCE[a.audience] || a.audience)}</span>` : ''}</div>
+      <h3>${esc(a.title)}</h3>
+      <p class="ann-body">${esc(a.body)}</p>
+      <div class="ann-foot">${by ? avatar(by, 'sm') : ''}<span><b>${esc(by?.pseudo || 'Encadrement')}</b><small>${fmtDT(a.at)} · ${ago(a.at)}</small></span></div>
+    </li>`;
+  };
+  const html = `<div class="wrap page narrow">
+    ${head('Annonces', 'Les informations officielles du clan, les plus importantes en premier.', api.can('announcements.manage') ? `<a class="btn btn-sm" href="#/admin/annonces">${I.plus} Publier</a>` : '')}
+    <div class="chips">${chips.map(([k, l, n]) => `<a class="chip ${f === k ? 'on' : ''}" href="#/annonces${k === 'all' ? '' : `?f=${k}`}">${l} <small>${n}</small></a>`).join('')}</div>
+    ${list.length ? `<ul class="ann ann-full">${list.map(card).join('')}</ul>` : empty(f === 'new' ? 'Tu as tout lu.' : 'Aucune annonce pour le moment.')}
+    ${!me ? `<p class="muted center small">Les membres voient aussi les annonces réservées au clan. <a class="link" href="#/connexion">Se connecter</a></p>` : ''}
+  </div>`;
+  return {
+    html,
+    mount(root) {
+      if (query.id) root.querySelector(`#ann-${CSS.escape(query.id)}`)?.scrollIntoView({ block: 'center' });
+      // Vu : le badge disparaît, le repère « Nouveau » reste affiché jusqu'au prochain passage
+      if (me && nNew) { api.markAnnSeen(); document.dispatchEvent(new Event('akt:chrome')); }
+    },
+  };
+}
+
 // ---------- Compte en attente ----------
 export function pending() {
   const u = api.me();
@@ -142,8 +176,8 @@ export function dashboard({ rerender }) {
       </section>
 
       <section class="sec">
-        <div class="sec-head"><h2>Annonces du clan</h2></div>
-        ${ann.length ? `<ul class="ann">${ann.map((a) => `<li class="${a.pinned ? 'pinned' : ''}"><div class="ann-meta">${a.pinned ? '<span class="pill">Épinglée</span>' : ''}<span>${ago(a.at)} · ${esc(api.user(a.authorId)?.pseudo)}</span></div><h3>${esc(a.title)}</h3><p>${esc(a.body)}</p></li>`).join('')}</ul>` : empty('Aucune annonce.')}
+        <div class="sec-head"><h2>Annonces du clan</h2><a class="link" href="#/annonces">Toutes${api.annUnread() ? ` · ${api.annUnread()} nouvelle${api.annUnread() > 1 ? 's' : ''}` : ''} ${I.right}</a></div>
+        ${ann.length ? `<ul class="ann">${ann.map((a) => `<li class="${a.pinned ? 'pinned' : ''} ${api.isAnnNew(a) ? 'is-new' : ''}"><a class="ann-link" href="#/annonces?id=${esc(a.id)}"><div class="ann-meta">${api.isAnnNew(a) ? '<span class="ann-new">Nouveau</span>' : ''}${a.pinned ? '<span class="pill">Épinglée</span>' : ''}<span>${ago(a.at)} · ${esc(api.user(a.authorId)?.pseudo)}</span></div><h3>${esc(a.title)}</h3><p class="clamp">${esc(a.body)}</p></a></li>`).join('')}</ul>` : empty('Aucune annonce.')}
       </section>
 
       <section class="sec">
@@ -436,6 +470,7 @@ export function menu() {
   const links = [
     ['#/profil', I.user, 'Mon profil', 'Statistiques, grade, distinctions'],
     ['#/profil?tab=historique', I.log, 'Mes points', `${nf(S.balance)} pts de solde · historique complet`],
+    ['#/annonces', I.mega, 'Annonces', api.annUnread() ? `${api.annUnread()} nouvelle${api.annUnread() > 1 ? 's' : ''}` : 'Informations officielles du clan'],
     ['#/notifications', I.bell, 'Notifications', `${api.unreadCount()} non lues · réglage du téléphone`],
     ['#/calendrier', I.cal, 'Calendrier', 'Séances et compétitions'],
     ['#/reglement', I.book, 'Règlement', 'Règles et mon dossier'],

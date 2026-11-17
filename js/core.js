@@ -372,10 +372,28 @@ export function createActivity({ title, ruleId, mode, date }) {
   const a = { id: uid('a'), key: uid('k'), title: title.trim(), ruleId, mode: mode || null, date: new Date(date).toISOString(), registrations: [], auto: false };
   D().activities.push(a);
   audit('Activité programmée', a.title, new Date(a.date).toLocaleString('fr-FR'));
-  notifyAll(`Nouvelle séance : ${a.title}, ${new Date(a.date).toLocaleString('fr-FR', { weekday: 'long', hour: '2-digit', minute: '2-digit' })}.`, '#/calendrier');
+  notifyAll(`Nouvelle séance : ${a.title}, ${when(a.date)}.`, '#/calendrier');
   commit();
 }
-function notifyAll(text, link, filter = () => true) { for (const u of D().users) if (u.status === 'active' && filter(u)) notify(u.id, text, link); }
+// Tout le clan : membres actifs, suspendus et inactifs (pas les comptes en attente, refusés ou exclus)
+const CLAN = ['active', 'suspended', 'inactive'];
+function notifyAll(text, link, filter = () => true) { for (const u of D().users) if (CLAN.includes(u.status) && filter(u)) notify(u.id, text, link); }
+const when = (d) => new Date(d).toLocaleString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+
+// Tâche serveur : rappel à tout le clan le jour même, environ 3 heures avant chaque séance
+export function remindActivities() {
+  const now = Date.now(); let n = 0;
+  for (const a of D().activities) {
+    if (a.cancelled || a.reminded) continue;
+    const at = new Date(a.date).getTime();
+    if (at < now || at > now + 3 * 36e5) continue;
+    const hour = new Date(a.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    notifyAll(`Aujourd’hui à ${hour} : ${a.title}. Inscris-toi depuis le calendrier.`, '#/calendrier');
+    a.reminded = true; n++;
+  }
+  if (n) commit();
+  return n;
+}
 
 // ---------- Tournois ----------
 export const tournament = (id) => D().tournaments.find((t) => t.id === id) || null;
@@ -413,7 +431,7 @@ export function saveTournament(f) {
   });
   if (isNew) db.tournaments.push(t);
   audit(isNew ? 'Tournoi créé' : 'Tournoi modifié', t.name, `${T_TYPES[t.type]} · ${new Date(t.date).toLocaleString('fr-FR')}`);
-  if (!isNew && t.status !== 'draft') for (const r of activeRegs(t)) for (const id of regUsers(r)) notify(id, `Le tournoi ${t.name} a été mis à jour. Vérifie la date et l’horaire.`, `#/tournoi/${t.id}`);
+  if (!isNew && t.status !== 'draft') notifyAll(`Tournoi mis à jour : ${t.name}, ${when(t.date)}.`, `#/tournoi/${t.id}`);
   commit();
   return t;
 }
@@ -423,8 +441,10 @@ export function setTStatus(id, status) {
   if (!T_STATUS[status] || status === 'done') fail('Pour terminer un tournoi, valide ses résultats.');
   if (t.status === 'done') fail('Un tournoi terminé ne peut plus changer de statut.');
   const prev = t.status; t.status = status;
-  if (status === 'open') notifyAll(`Inscriptions ouvertes : ${t.name}. Clôture le ${new Date(t.deadline).toLocaleDateString('fr-FR')}.`, `#/tournoi/${t.id}`, (u) => t.mode === null || u.mode === 'MJ+BR' || u.mode === t.mode);
-  if (status === 'cancelled' || status === 'live') for (const r of activeRegs(t)) for (const uid_ of regUsers(r)) notify(uid_, status === 'live' ? `${t.name} commence. Rejoins le salon.` : `${t.name} est annulé.`, `#/tournoi/${t.id}`);
+  if (status === 'open') notifyAll(`Inscriptions ouvertes : ${t.name}, ${when(t.date)}. Clôture le ${new Date(t.deadline).toLocaleDateString('fr-FR')}.`, `#/tournoi/${t.id}`);
+  if (status === 'closed') notifyAll(`Inscriptions closes : ${t.name}. ${activeRegs(t).length} inscrits.`, `#/tournoi/${t.id}`);
+  if (status === 'live') notifyAll(`${t.name} commence maintenant. Les inscrits, rejoignez le salon.`, `#/tournoi/${t.id}`);
+  if (status === 'cancelled') notifyAll(`${t.name} est annulé.`, `#/tournoi/${t.id}`);
   audit('Statut du tournoi', t.name, `${T_STATUS[prev]} → ${T_STATUS[status]}`);
   commit();
 }
@@ -539,7 +559,10 @@ export function remindTournaments() {
     if (!['open', 'closed'].includes(t.status) || t.reminded) continue;
     const at = new Date(t.date).getTime();
     if (at > soon || at < Date.now()) continue;
-    for (const r of activeRegs(t)) for (const id of regUsers(r)) notify(id, `Rappel : ${t.name} commence ${new Date(t.date).toLocaleString('fr-FR', { weekday: 'long', hour: '2-digit', minute: '2-digit' })}.`, `#/tournoi/${t.id}`);
+    const time = new Date(t.date).toLocaleString('fr-FR', { weekday: 'long', hour: '2-digit', minute: '2-digit' });
+    const regs = new Set(activeRegs(t).flatMap(regUsers));
+    notifyAll(`Rappel : ${t.name} commence ${time}.${t.status === 'open' ? ' Inscriptions encore ouvertes.' : ''}`, `#/tournoi/${t.id}`, (u) => !regs.has(u.id));
+    for (const id of regs) notify(id, `Rappel : ${t.name} commence ${time}. Tu es inscrit.`, `#/tournoi/${t.id}`);
     t.reminded = true; n++;
   }
   if (n) commit();
@@ -636,6 +659,8 @@ export function saveReward(f) {
   Object.assign(r, { name: f.name.trim(), description: f.description?.trim() || '', category: f.category, cost, stock, from: f.from || null, to: f.to || null, active: f.active !== false && f.active !== 'off', img: f.img ?? r.img ?? null });
   if (isNew) db.rewards.push(r);
   audit(isNew ? 'Récompense ajoutée' : 'Récompense modifiée', r.name, prev ? `Coût ${prev.cost} → ${cost}, stock ${prev.stock} → ${stock}` : `${cost} pts, stock ${stock}`);
+  if (r.active && isNew) notifyAll(`Nouvelle récompense au catalogue : ${r.name}, ${cost} points.`, '#/recompenses');
+  else if (r.active && prev && prev.stock === 0 && stock > 0) notifyAll(`De retour en stock : ${r.name}, ${cost} points.`, '#/recompenses');
   commit();
 }
 export function toggleReward(id) {
@@ -662,6 +687,7 @@ export function acceptProposal() {
   const bp = D().rewards.find((r) => r.category === 'bp');
   if (bp) D().requests.push({ id: uid('rq'), userId: p.user.id, rewardId: bp.id, cost: 0, auto: true, status: 'accepted', reason: '', at: nowISO(), history: [{ status: 'accepted', at: nowISO(), by: me().id, note: `MVP de ${p.period}` }] });
   notify(p.user.id, `Tu es MVP de ${p.period}. Ta passe de combat sera remise par un responsable.`, '#/profil');
+  notifyAll(`${p.user.pseudo} est le MVP de ${p.period}. Bravo à lui.`, `#/joueur/${p.user.id}`, (u) => u.id !== p.user.id);
   audit('Proposition MVP validée', p.user.pseudo, `${p.period} · ${p.points} pts · passe de combat à remettre`);
   commit();
 }
@@ -672,6 +698,7 @@ export function awardDistinction({ userId, title, period }) {
   if (!title?.trim() || !period?.trim()) fail('Distinction et période obligatoires.');
   D().distinctions.push({ id: uid('d'), userId, title: title.trim(), period: period.trim(), at: nowISO(), by: me().id });
   notify(userId, `Nouvelle distinction : ${title} (${period}).`, '#/profil');
+  notifyAll(`${user(userId).pseudo} reçoit la distinction ${title.trim()} (${period.trim()}).`, `#/joueur/${userId}`, (u) => u.id !== userId);
   audit('Distinction attribuée', user(userId).pseudo, `${title} · ${period}`);
   commit();
 }
@@ -689,7 +716,8 @@ export function createAnnouncement({ title, body, audience, pinned }) {
   if (audience && !['all', 'MJ', 'BR', 'staff'].includes(audience)) fail('Public invalide.');
   const a = { id: uid('n'), title: title.trim(), body: body.trim(), audience: audience || 'all', pinned: !!pinned, at: nowISO(), authorId: me().id };
   D().announcements.push(a);
-  for (const u of D().users) if (u.status === 'active' && u.id !== me().id && visibleAnnouncements(u).some((x) => x.id === a.id)) notify(u.id, `Annonce : ${a.title}`, '#/base');
+  // Tout le clan, sauf si l'annonce vise un public précis (MJ, BR, encadrement)
+  notifyAll(`${a.pinned ? 'Annonce importante' : 'Annonce'} : ${a.title}`, `#/annonces?id=${a.id}`, (u) => u.id !== me().id && visibleAnnouncements(u).some((x) => x.id === a.id));
   audit('Annonce publiée', a.title, `Public : ${a.audience}`);
   commit();
 }
@@ -736,6 +764,7 @@ export function saveRules(rules) {
   const diff = clean.filter((r) => { const p = prev.find((x) => x.id === r.id); return !p || p.points !== r.points || p.label !== r.label; }).map((r) => `${r.label} ${r.points > 0 ? '+' : ''}${r.points}`);
   D().settings.pointRules = clean;
   audit('Barème modifié', 'Barème des points', diff.join(' · ') || 'Aucun changement de valeur');
+  if (diff.length) notifyAll(`Le barème des points a changé : ${diff.slice(0, 3).join(', ')}${diff.length > 3 ? '…' : ''}.`, '#/clan');
   commit();
 }
 export function saveGrades(grades) {
@@ -746,6 +775,7 @@ export function saveGrades(grades) {
   if (new Set(g.map((x) => x.min)).size !== g.length) fail('Deux grades ne peuvent pas avoir le même seuil.');
   D().settings.grades = g;
   audit('Grades modifiés', 'Système de grades', g.map((x) => `${x.name} ${x.min}`).join(' · '));
+  notifyAll('Les grades du clan ont changé. Regarde où tu en es.', '#/clan');
   commit();
 }
 export function saveWeekly(list) {
@@ -762,6 +792,7 @@ export function saveWeekly(list) {
   const now = Date.now();
   D().activities = D().activities.filter((a) => !(a.auto && new Date(a.date).getTime() > now && !a.registrations.length));
   audit('Calendrier modifié', 'Programme hebdomadaire');
+  notifyAll('Le programme de la semaine a changé.', '#/calendrier');
   commit();
   ensureUpcoming();
 }

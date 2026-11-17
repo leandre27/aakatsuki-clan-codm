@@ -115,7 +115,7 @@ if (PROD && DEMO) console.warn('ATTENTION : mode démonstration actif en product
 async function jobs() {
   try {
     await runMutation(null, () => {
-      core.ensureUpcoming(); core.remindTournaments();
+      core.ensureUpcoming(); core.remindTournaments(); core.remindActivities();
       const d = new Date();
       if (d.getDay() === 0 && d.getHours() >= 20) core.weeklyDigest(); // dimanche soir
     });

@@ -15,6 +15,17 @@ function apply(s) {
   core.resetCache();
 }
 export const info = () => meta;
+
+// Annonces lues : mémorisées sur cet appareil, par compte (date de la dernière annonce vue)
+const annKey = () => `akt.ann.seen.${meId || 'visiteur'}`;
+export function announcementsFor() { return meId ? core.visibleAnnouncements() : core.publicAnnouncements(); }
+export function annSeenAt() { return localStorage.getItem(annKey()) || ''; }
+export const isAnnNew = (a) => a.authorId !== meId && a.at > annSeenAt();
+export const annUnread = () => (meId ? announcementsFor().filter(isAnnNew).length : 0);
+export function markAnnSeen() {
+  const last = announcementsFor().reduce((m, a) => (a.at > m ? a.at : m), '');
+  if (last > annSeenAt()) localStorage.setItem(annKey(), last);
+}
 export const ready = () => !!state;
 
 async function call(url, body, method = 'POST') {

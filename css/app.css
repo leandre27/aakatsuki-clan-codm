@@ -401,6 +401,19 @@ a.kpi:hover { background: var(--s2); }
 .ann-meta .icon-btn { margin-left: auto; width: 32px; height: 32px; }
 .ann h3 { font-size: 17px; margin-bottom: var(--s-1); }
 .ann p { color: var(--mu); font-size: 15px; }
+.ann-link { display: block; color: inherit; }
+.ann .clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.ann-new { font: 700 11px/1 var(--fd); text-transform: uppercase; letter-spacing: .08em; color: #fff; background: var(--red); padding: 5px 8px; border-radius: 4px; }
+.ann li.is-new { box-shadow: inset 3px 0 0 var(--red); }
+.ann-full li { padding: var(--s-6) var(--s-4); }
+.ann-full h3 { font-size: 20px; margin-bottom: var(--s-2); }
+.ann-full .ann-body { color: var(--tx); font-size: 16px; line-height: 1.6; white-space: pre-line; overflow-wrap: anywhere; }
+.ann-foot { display: flex; align-items: center; gap: var(--s-3); margin-top: var(--s-4); padding-top: var(--s-4); border-top: 1px solid var(--line); }
+.ann-foot span { display: grid; gap: 2px; }
+.ann-foot small { color: var(--mu); font-size: 13px; }
+.ann li.is-target { animation: annFlash 1.6s ease-out 1; }
+@keyframes annFlash { from { background: var(--s3, #2a2a30); } to { background: var(--s1); } }
+@media (prefers-reduced-motion: reduce) { .ann li.is-target { animation: none; } }
 
 /* ---------- Listes et historique ---------- */
 .list { list-style: none; margin: 0; padding: 0; }

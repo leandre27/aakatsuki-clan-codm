@@ -10,7 +10,7 @@ import { toast } from './ui.js';
 // guard : 'auth' = connecté, 'member' = membre validé (sinon page d'attente), 'staff' = rôle administratif
 const routes = [
   ['', pub.home], ['clan', pub.clan], ['classement', pub.leaderboard], ['calendrier', pub.calendar], ['recompenses', pub.rewards],
-  ['rejoindre', pub.register], ['connexion', pub.login], ['reglement', mem.rulebook],
+  ['rejoindre', pub.register], ['connexion', pub.login], ['reglement', mem.rulebook], ['annonces', mem.announcements],
   ['base', mem.dashboard, 'member'], ['profil', mem.profile, 'member'], ['joueur/:id', mem.profile, 'member'],
   ['tournois', mem.tournaments, 'member'], ['tournoi/:id', mem.tournament, 'member'],
   ['notifications', mem.notifications, 'auth'], ['moi', mem.menu, 'auth'], ['mot-de-passe', mem.firstPassword, 'auth'],
@@ -63,9 +63,10 @@ function chrome(path) {
   const u = api.me();
   const member = u && ['active', 'suspended', 'inactive'].includes(u.status);
   const unread = u ? api.unreadCount() : 0;
+  const annNew = member ? api.annUnread() : 0;
   const home = member ? '#/base' : '#/';
   const desktop = member
-    ? [['#/base', 'Base'], ['#/classement', 'Classement'], ['#/tournois', 'Tournois'], ['#/recompenses', 'Récompenses'], ['#/calendrier', 'Calendrier']]
+    ? [['#/base', 'Base'], ['#/annonces', 'Annonces'], ['#/classement', 'Classement'], ['#/tournois', 'Tournois'], ['#/recompenses', 'Récompenses'], ['#/calendrier', 'Calendrier']]
     : [['#/', 'Accueil'], ['#/clan', 'Le clan'], ['#/classement', 'Classement'], ['#/calendrier', 'Calendrier'], ['#/recompenses', 'Récompenses']];
   const on = (h) => { const p = h.replace('#/', ''); return p === '' ? path === '' : path === p || path.startsWith(p + '/') || (p === 'tournois' && path.startsWith('tournoi/')); };
   const offline = api.info().offline;
@@ -76,6 +77,7 @@ function chrome(path) {
     <div class="tb-right">
       ${installTopButton()}
       ${u ? `${api.isStaff(u) ? `<a class="icon-btn ${path.startsWith('admin') ? 'on' : ''}" href="#/admin" aria-label="Administration">${I.shield}</a>` : ''}
+        ${member ? `<a class="icon-btn bell ${path === 'annonces' ? 'on' : ''}" href="#/annonces" aria-label="Annonces${annNew ? `, ${annNew} nouvelles` : ''}">${I.mega}${annNew ? `<span class="badge-n">${annNew > 9 ? '9+' : annNew}</span>` : ''}</a>` : ''}
         <a class="icon-btn bell" href="#/notifications" aria-label="Notifications, ${unread} non lues">${I.bell}${unread ? `<span class="badge-n">${unread > 9 ? '9+' : unread}</span>` : ''}</a>
         <a class="tb-me" href="#/moi" aria-label="Mon compte">${avatar(u, 'sm')}</a>`
       : `<a class="btn btn-sm btn-line" href="#/connexion">Connexion</a><a class="btn btn-sm hide-sm" href="#/rejoindre">Rejoindre</a>`}
@@ -84,11 +86,13 @@ function chrome(path) {
   const tabs = member
     ? [['#/base', I.home, 'Base'], ['#/classement', I.rank, 'Classement'], ['#/tournois', I.cup, 'Tournois'], ['#/recompenses', I.gift, 'Butin'], ['#/moi', I.user, 'Moi']]
     : [['#/', I.home, 'Accueil'], ['#/classement', I.rank, 'Classement'], ['#/calendrier', I.cal, 'Calendrier'], ['#/recompenses', I.gift, 'Récompenses'], [u ? '#/moi' : '#/rejoindre', I.user, u ? 'Moi' : 'Rejoindre']];
-  const active = (h) => on(h) || (h === '#/moi' && ['profil', 'notifications', 'reglement', 'clan'].includes(path.split('/')[0])) || (h === '#/moi' && path.startsWith('admin')) || (h === '#/tournois' && path === 'calendrier' && member);
+  const active = (h) => on(h) || (h === '#/moi' && ['profil', 'notifications', 'reglement', 'clan', 'annonces'].includes(path.split('/')[0])) || (h === '#/moi' && path.startsWith('admin')) || (h === '#/tournois' && path === 'calendrier' && member);
   document.getElementById('tabbar').innerHTML = tabs.map(([h, i, l]) => `<a href="${h}" class="${active(h) ? 'on' : ''}" ${active(h) ? 'aria-current="page"' : ''}>${i}<span>${esc(l)}</span></a>`).join('');
 }
 
 addEventListener('hashchange', () => render());
+// Une page peut demander de rafraîchir la barre du haut (badges)
+document.addEventListener('akt:chrome', () => chrome(location.hash.replace(/^#\/?/, '').split('?')[0]));
 addEventListener('scroll', () => document.body.classList.toggle('scrolled', scrollY > 8), { passive: true });
 
 initPWA();
