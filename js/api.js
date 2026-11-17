@@ -6,12 +6,12 @@ export * from './core.js';
 
 let state = null;
 let meId = null;
-let meta = { demo: false, demoAccounts: [] };
+let meta = {};
 core.configure({ getDB: () => state, getActor: () => (meId && state ? state.users.find((u) => u.id === meId) || null : null) });
 
 function apply(s) {
   state = s.data; meId = s.me;
-  meta = { demo: !!s.demo, demoAccounts: s.demoAccounts || [], vapidPublicKey: s.vapidPublicKey || '' };
+  meta = { vapidPublicKey: s.vapidPublicKey || '' };
   core.resetCache();
 }
 export const info = () => meta;
@@ -102,7 +102,6 @@ export async function pushSubscribe(subscription) { await call('/api/push/subscr
 export async function pushUnsubscribe(endpoint) { await call('/api/push/unsubscribe', { endpoint }); }
 export async function changePassword(current, next) { await call('/api/auth/password', { current, next }); }
 export async function adminResetPassword(userId) { return (await call('/api/auth/admin-reset', { userId })).temp; }
-export async function resetDemo() { await call('/api/demo/reset', {}); }
 
 const rpc = (name) => async (...args) => (await call(`/api/rpc/${name}`, { args })).result;
 export const awardPoints = rpc('awardPoints');
@@ -142,3 +141,14 @@ export const saveRulebook = rpc('saveRulebook');
 export const closeSeason = rpc('closeSeason');
 export const weeklyDigest = rpc('weeklyDigest');
 export const saveCard = rpc('saveCard');
+export const challenge = rpc('challenge');
+export const answerChallenge = rpc('answerChallenge');
+export const cancelChallenge = rpc('cancelChallenge');
+export const reportWinner = rpc('reportWinner');
+export const confirmResult = rpc('confirmResult');
+export const settleChallenge = rpc('settleChallenge');
+// Défis 1v1 qui attendent une action de ma part
+export function challengeTodo() {
+  const me = core.me(); if (!me) return 0;
+  return (state?.challenges || []).filter((c) => (c.status === 'pending' && c.toId === me.id) || (c.status === 'accepted' && [c.fromId, c.toId].includes(me.id)) || (c.status === 'reported' && [c.fromId, c.toId].includes(me.id) && c.reportedBy !== me.id)).length;
+}

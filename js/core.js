@@ -336,6 +336,107 @@ export function updateUser(id, f) {
   commit();
 }
 
+// ---------- Défis 1v1 ----------
+// Un membre en défie un autre ; le défi accepté est annoncé au clan, le résultat
+// déclaré par un joueur est confirmé par l'autre (ou tranché par un responsable).
+export const CH_STATUS = { pending: 'En attente de réponse', accepted: 'À jouer', declined: 'Refusé', cancelled: 'Annulé', reported: 'Résultat à confirmer', disputed: 'Résultat contesté', done: 'Terminé' };
+export const CH_OPEN = ['pending', 'accepted', 'reported', 'disputed'];
+const challengeById = (id) => D().challenges.find((c) => c.id === id) || fail('Défi introuvable.');
+const pseudoOf = (id) => user(id)?.pseudo || 'un joueur';
+const otherOf = (c, id) => (c.fromId === id ? c.toId : c.fromId);
+export function challenge({ toId, message = '', at = '' }) {
+  const u = mustActiveMember();
+  const o = user(toId);
+  if (!o || o.status !== 'active') fail('Ce joueur ne peut pas être défié pour le moment.');
+  if (o.id === u.id) fail('Tu ne peux pas te défier toi-même.');
+  if (D().challenges.some((c) => CH_OPEN.includes(c.status) && [c.fromId, c.toId].includes(u.id) && [c.fromId, c.toId].includes(o.id))) fail(`Un défi est déjà en cours entre toi et ${o.pseudo}.`);
+  if (D().challenges.filter((c) => c.fromId === u.id && c.status === 'pending').length >= 5) fail('Tu as déjà 5 défis qui attendent une réponse.');
+  let date = null;
+  if (at) { const d = new Date(at); if (Number.isNaN(d.getTime())) fail('Date invalide.'); date = d.toISOString(); }
+  const c = { id: uid('ch'), fromId: u.id, toId: o.id, status: 'pending', message: str(message, 140).trim(), at: date, createdAt: nowISO() };
+  D().challenges.push(c);
+  notify(o.id, `${u.pseudo} te défie en 1v1${date ? `, ${when(date)}` : ''}. Accepte ou refuse le défi.`, '#/defis');
+  commit();
+  return { id: c.id };
+}
+export function answerChallenge(id, answer) {
+  const u = mustActiveMember();
+  const c = challengeById(id);
+  if (c.toId !== u.id) fail('Ce défi ne t’est pas adressé.');
+  if (c.status !== 'pending') fail('Ce défi n’attend plus de réponse.');
+  const yes = answer === 'accept';
+  c.status = yes ? 'accepted' : 'declined'; c.respondedAt = nowISO();
+  if (yes) notifyAll(`Combat 1v1 : ${pseudoOf(c.fromId)} contre ${u.pseudo}${c.at ? `, ${when(c.at)}` : ''}. Qui va l’emporter ?`, '#/defis');
+  else notify(c.fromId, `${u.pseudo} a refusé ton défi 1v1.`, '#/defis');
+  commit();
+}
+export function cancelChallenge(id) {
+  const u = mustActiveMember();
+  const c = challengeById(id);
+  if (![c.fromId, c.toId].includes(u.id)) fail('Ce défi ne te concerne pas.');
+  if (c.status === 'pending' ? c.fromId !== u.id : c.status !== 'accepted') fail('Ce défi ne peut plus être annulé.');
+  c.status = 'cancelled'; c.cancelledBy = u.id; c.doneAt = nowISO();
+  notify(otherOf(c, u.id), `${u.pseudo} a annulé le défi 1v1.`, '#/defis');
+  commit();
+}
+function finishChallenge(c, winnerId) {
+  c.status = 'done'; c.winnerId = winnerId; c.doneAt = nowISO();
+  const loser = otherOf(c, winnerId);
+  notifyAll(`${pseudoOf(winnerId)} a gagné son 1v1 contre ${pseudoOf(loser)}.`, '#/defis');
+}
+// Un joueur déclare le vainqueur. S'il reconnaît sa défaite, c'est terminé ; sinon l'adversaire confirme.
+export function reportWinner(id, winnerId) {
+  const u = mustActiveMember();
+  const c = challengeById(id);
+  if (![c.fromId, c.toId].includes(u.id)) fail('Ce défi ne te concerne pas.');
+  if (c.status !== 'accepted') fail('Ce défi n’attend pas de résultat.');
+  if (![c.fromId, c.toId].includes(winnerId)) fail('Le vainqueur doit être l’un des deux joueurs.');
+  if (winnerId !== u.id) finishChallenge(c, winnerId);
+  else {
+    c.status = 'reported'; c.reportedBy = u.id; c.winnerId = winnerId; c.reportedAt = nowISO();
+    notify(otherOf(c, u.id), `${u.pseudo} déclare avoir gagné votre 1v1. Confirme ou conteste le résultat.`, '#/defis');
+  }
+  commit();
+}
+export function confirmResult(id, answer) {
+  const u = mustActiveMember();
+  const c = challengeById(id);
+  if (c.status !== 'reported' || otherOf(c, c.reportedBy) !== u.id) fail('Aucun résultat à confirmer.');
+  if (answer === 'yes') finishChallenge(c, c.winnerId);
+  else {
+    c.status = 'disputed'; c.disputedAt = nowISO();
+    notify(c.reportedBy, `${u.pseudo} conteste le résultat de votre 1v1. Un responsable va trancher.`, '#/defis');
+    notifyPerm('tournaments.manage', `Résultat 1v1 contesté entre ${pseudoOf(c.fromId)} et ${pseudoOf(c.toId)} : à trancher.`, '#/defis');
+  }
+  commit();
+}
+// Un responsable valide le vainqueur d'un défi en cours ou contesté
+export function settleChallenge(id, winnerId) {
+  must('tournaments.manage');
+  const c = challengeById(id);
+  if (!['accepted', 'reported', 'disputed'].includes(c.status)) fail('Ce défi n’attend pas de résultat.');
+  if (![c.fromId, c.toId].includes(winnerId)) fail('Le vainqueur doit être l’un des deux joueurs.');
+  audit('Défi 1v1 tranché', `${pseudoOf(c.fromId)} contre ${pseudoOf(c.toId)}`, `Vainqueur : ${pseudoOf(winnerId)}`);
+  finishChallenge(c, winnerId);
+  commit();
+}
+// Défis sans réponse depuis 7 jours : annulés automatiquement (tâche horaire du serveur)
+export function expireChallenges() {
+  const limit = new Date(Date.now() - 7 * 864e5).toISOString();
+  let n = 0;
+  for (const c of D().challenges || []) {
+    if (c.status === 'pending' && c.createdAt < limit) {
+      c.status = 'cancelled'; c.doneAt = nowISO(); c.expired = true; n++;
+      notify(c.fromId, `Ton défi 1v1 contre ${pseudoOf(c.toId)} a expiré sans réponse.`, '#/defis');
+    }
+  }
+  if (n) commit();
+}
+export function challengeRecord(userId) {
+  const done = (D().challenges || []).filter((c) => c.status === 'done' && [c.fromId, c.toId].includes(userId));
+  return { wins: done.filter((c) => c.winnerId === userId).length, losses: done.filter((c) => c.winnerId !== userId).length };
+}
+
 // ---------- Carte de présentation ----------
 // Quatre images comme les affiches du clan, jouées en animation 3D pour tout le clan.
 export const CARD_SLOTS = {

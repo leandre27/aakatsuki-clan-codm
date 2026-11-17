@@ -346,10 +346,6 @@ export function login({ query }) {
         <label class="field"><span>Mot de passe</span><input name="password" type="password" required autocomplete="current-password"></label>
         <button class="btn btn-lg btn-block">Se connecter</button>
       </form>
-      ${api.info().demo ? `<div class="demo">
-        <p class="small muted">Mode démonstration : comptes de test</p>
-        <div class="row">${api.info().demoAccounts.map((d, i) => `<button class="btn btn-line btn-sm" data-demo="${i}">${esc(d.label)}</button>`).join('')}</div>
-      </div>` : ''}
       <p class="muted center">Pas encore membre ? <a class="link" href="#/rejoindre">Rejoindre le clan</a></p>
     </div>
   </div>`;
@@ -363,7 +359,6 @@ export function login({ query }) {
         syncPush(); toast(`Bon retour, ${u.pseudo}.`); location.hash = query.next ? decodeURIComponent(query.next) : '#/base';
       };
       root.querySelector('#lg').onsubmit = act(async (e) => { e.preventDefault(); const f = formObj(e.target); await go(f.login, f.password); });
-      root.querySelectorAll('[data-demo]').forEach((b) => (b.onclick = act(() => { const d = api.info().demoAccounts[b.dataset.demo]; return go(d.login, d.password); })));
       return off;
     },
   };

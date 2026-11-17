@@ -147,6 +147,7 @@ export function dashboard({ rerender }) {
     </div>
 
     ${installCard()}
+    ${api.challengeTodo() ? `<a class="panel card-cta" href="#/defis">${I.target}<div><b>Défis 1v1 : ${api.challengeTodo()} à traiter</b><small>Un défi attend ta réponse ou ton résultat.</small></div>${I.right}</a>` : ''}
     ${!u.card?.publishedAt ? `<a class="panel card-cta" href="#/presentation">${I.film}<div><b>Crée ta carte de présentation</b><small>Ta photo, ton personnage, ton profil et ton arme, joués en animation 3D pour tout le clan.</small></div>${I.right}</a>` : ''}
     <div data-push-card></div>
     <div class="kpis">
@@ -255,7 +256,11 @@ export function profile({ params, query, rerender }) {
       </div>
       ${own ? `<button class="btn btn-line btn-sm" id="edit">${I.edit} Modifier</button>` : staff ? `<a class="btn btn-line btn-sm" href="#/admin/membres?open=${u.id}">${I.shield} Gérer</a>` : ''}
     </div>
-    ${u.card?.publishedAt ? `<a class="btn btn-sm prof-card" href="#/bienvenue/${u.id}">${I.play} Voir la présentation</a>` : own ? `<a class="btn btn-sm btn-line prof-card" href="#/presentation">${I.film} Créer ma carte de présentation</a>` : ''}
+    <div class="row prof-card">
+      ${u.card?.publishedAt ? `<a class="btn btn-sm" href="#/bienvenue/${u.id}">${I.play} Voir la présentation</a>` : own ? `<a class="btn btn-sm btn-line" href="#/presentation">${I.film} Créer ma carte de présentation</a>` : ''}
+      ${!own && u.status === 'active' && meU.status === 'active' ? `<a class="btn btn-sm btn-line" href="#/defis?vs=${u.id}">${I.target} Défier en 1v1</a>` : ''}
+      <span class="pill">1v1 : ${api.challengeRecord(u.id).wins} V · ${api.challengeRecord(u.id).losses} D</span>
+    </div>
     ${dist.length ? `<div class="dist-strip">${dist.slice(0, 4).map((d) => `<span class="dist">${esc(d.title)} <small>${esc(d.period)}</small></span>`).join('')}</div>` : ''}
     <div class="chips" role="tablist">${tabs.map(([k, l]) => `<a class="chip ${k === tab ? 'on' : ''}" href="${base}?tab=${k}">${l}</a>`).join('')}</div>
     ${body}
@@ -306,6 +311,7 @@ export function tournaments({ query }) {
   const list = all.filter((t) => (f === 'upcoming' ? ['open', 'closed', 'draft'].includes(t.status) : f === 'live' ? t.status === 'live' : ['done', 'cancelled'].includes(t.status)));
   const html = `<div class="wrap page">
     ${head('Tournois', 'Inscris-toi directement depuis la fiche du tournoi', api.canManageAnyT() ? `<a class="btn btn-sm" href="#/admin/tournois?new=1">${I.plus} Créer</a>` : '')}
+    <a class="panel card-cta" href="#/defis">${I.target}<div><b>Défis 1v1${api.challengeTodo() ? ` · ${api.challengeTodo()} à traiter` : ''}</b><small>Défie un membre, le clan suit le combat et le résultat.</small></div>${I.right}</a>
     <div class="chips">${[['upcoming', 'À venir'], ['live', 'En cours'], ['past', 'Historique']].map(([k, l]) => `<a class="chip ${k === f ? 'on' : ''}" href="#/tournois?f=${k}">${l}<small>${all.filter((t) => (k === 'upcoming' ? ['open', 'closed', 'draft'].includes(t.status) : k === 'live' ? t.status === 'live' : ['done', 'cancelled'].includes(t.status))).length}</small></a>`).join('')}</div>
     <div class="grid-cards">${list.map(tCard).join('') || empty('Rien ici pour le moment.')}</div>
   </div>`;
@@ -475,6 +481,7 @@ export function menu() {
     ['#/profil', I.user, 'Mon profil', 'Statistiques, grade, distinctions'],
     ['#/profil?tab=historique', I.log, 'Mes points', `${nf(S.balance)} pts de solde · historique complet`],
     ['#/presentation', I.film, 'Ma carte de présentation', u.card?.publishedAt ? 'Publiée · modifier ou revoir l’animation' : 'À créer · le clan te découvre en animation 3D'],
+    ['#/defis', I.target, 'Défis 1v1', api.challengeTodo() ? `${api.challengeTodo()} à traiter` : 'Défie un membre du clan'],
     ['#/annonces', I.mega, 'Annonces', api.annUnread() ? `${api.annUnread()} nouvelle${api.annUnread() > 1 ? 's' : ''}` : 'Informations officielles du clan'],
     ['#/notifications', I.bell, 'Notifications', `${api.unreadCount()} non lues · réglage du téléphone`],
     ['#/calendrier', I.cal, 'Calendrier', 'Séances et compétitions'],
@@ -487,7 +494,6 @@ export function menu() {
     <ul class="menu">${links.map(([h, i, t, d]) => `<li><a href="${h}">${i}<div><b>${t}</b><small>${d}</small></div>${I.right}</a></li>`).join('')}${installMenuItem()}</ul>
     <button class="btn btn-line btn-block" id="lo">${I.out} Se déconnecter</button>
     <button class="btn btn-line btn-block" id="pw">Changer mon mot de passe</button>
-    ${api.info().demo && api.isSuper() ? `<button class="btn btn-ghost btn-block small" id="reset">Réinitialiser les données de démonstration</button>` : ''}
   </div>`;
   return {
     html,
@@ -500,7 +506,6 @@ export function menu() {
         <button class="btn btn-block">Enregistrer</button></form>`, (body, close) => {
         body.querySelector('#pwf').onsubmit = act(async (e) => { e.preventDefault(); const f = formObj(e.target); await api.changePassword(f.current, f.next); close(); toast('Mot de passe modifié. Tes autres appareils sont déconnectés.'); });
       });
-      root.querySelector('#reset')?.addEventListener('click', act(async () => { if (!(await ask('Réinitialiser la démo', 'Toutes les données du serveur seront remplacées par le jeu de démonstration.', { danger: true, label: 'Réinitialiser' }))) return; await api.resetDemo(); location.hash = '#/'; location.reload(); }));
     },
   };
 }

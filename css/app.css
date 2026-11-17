@@ -848,3 +848,40 @@ fieldset:not([hidden]) { animation: pageIn .3s var(--ease) both; }
 .onboard-head p { text-transform: uppercase; letter-spacing: .1em; font: 600 12px var(--fd); color: var(--red-tx); }
 .onboard-act { margin-top: var(--s-2); }
 .onboard-act .btn { width: 100%; justify-content: center; }
+
+/* ---------- Défis 1v1 ---------- */
+.ch-rec { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; margin: var(--s-4) 0; }
+.ch-rec div { background: var(--s1); padding: var(--s-3); text-align: center; }
+.ch-rec b { display: block; font: 700 28px/1 var(--fd); }
+.ch-rec div:first-child b { color: var(--red-tx); }
+.ch-rec span { color: var(--mu); font: 600 11px var(--fd); text-transform: uppercase; letter-spacing: .08em; }
+.duels { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-3); }
+.duel { background: var(--s1); border: 1px solid var(--line); border-radius: var(--r); padding: var(--s-3) var(--s-4) var(--s-4); }
+.duel-top { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); flex-wrap: wrap; }
+.duel-meta { color: var(--mu); font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
+.duel-meta .ic { width: 14px; height: 14px; }
+.duel-vs { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: var(--s-2); margin-top: var(--s-3); }
+.duel-p { display: grid; justify-items: center; gap: 4px; text-align: center; min-width: 0; }
+.duel-p b { font-size: 14px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.duel-p small { color: var(--red-tx); font: 700 11px var(--fd); text-transform: uppercase; letter-spacing: .08em; }
+.duel-p.win .av { box-shadow: 0 0 0 2px var(--red); }
+.duel-p.lose { opacity: .55; }
+.vs { font: 700 italic 26px var(--fd); color: var(--red-tx); transform: skewX(-8deg); }
+.duel-msg { margin-top: var(--s-2); text-align: center; color: var(--mu); font-style: italic; font-size: 14px; }
+.duel-act { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--s-2); margin-top: var(--s-3); padding-top: var(--s-3); border-top: 1px solid var(--line); }
+.pill.ch-pending, .pill.ch-reported { background: var(--warn-bg); color: var(--warn); }
+.pill.ch-accepted { background: var(--red); color: #fff; }
+.pill.ch-disputed { background: var(--red-bg); color: #ff8a84; }
+.pill.ch-done { background: var(--tx); color: var(--ink); }
+.ch-empty { display: grid; grid-template-columns: 24px 1fr; gap: var(--s-3) var(--s-4); align-items: center; }
+.ch-empty > .ic { color: var(--red-tx); }
+.ch-empty b { display: block; font-family: var(--fd); text-transform: uppercase; }
+.ch-empty small { color: var(--mu); }
+.ch-empty .btn { grid-column: 1 / -1; justify-self: start; }
+.ch-pick .btn { justify-content: center; gap: var(--s-2); min-width: 0; }
+.ch-pick .av { width: 24px; height: 24px; font-size: 10px; }
+.ch-players { grid-template-columns: 1fr; }
+.pick small { color: var(--mu); font-weight: 500; }
+.pick:has(input:disabled) { opacity: .45; cursor: not-allowed; }
+.prof-card .pill { margin-left: auto; }
+.tb-links a { white-space: nowrap; }

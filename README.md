@@ -36,16 +36,9 @@ Les nouveaux joueurs s'inscrivent eux-mêmes depuis « Rejoindre » en choisissa
 
 Pour tester sur ton téléphone (même Wi-Fi) : `HOST=0.0.0.0 npm run dev`, puis ouvre `http://<ip-de-ton-ordinateur>:3000` sur le téléphone.
 
-### Mode démonstration (facultatif)
+### Données fictives (tests et développement)
 
-`DEMO=1 DATA_DIR=data-demo npm run dev` lance une copie fictive avec des points, tournois et récompenses déjà remplis, pour montrer l'appli sans toucher aux vrais comptes.
-
-| Rôle | Identifiant | Mot de passe |
-|---|---|---|
-| Super administrateur (Kurogane) | kurogane | Akatsuki2026! |
-| Membre (Yoru) | yoru | Membre2026! |
-
-En mode démo, la page Connexion affiche deux boutons d'accès direct, et le super admin peut réinitialiser les données depuis le menu « Moi ». Sans `DEMO=1`, ces comptes, ces boutons et la réinitialisation n'existent pas.
+`DEMO=1 DATA_DIR=data-demo npm run dev` remplit une base locale avec des données fictives (comptes `kurogane` et `yoru`), utilisée par les tests automatiques. L'appli n'affiche aucun bouton ni accès de démonstration ; ne mets jamais `DEMO=1` en production.
 
 ### Tests
 

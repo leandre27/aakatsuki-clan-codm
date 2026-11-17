@@ -355,6 +355,31 @@ test('carte de présentation : images vérifiées, publiée au clan, visible des
   assert.equal(pub.card, undefined);
 });
 
+test('défi 1v1 : accepté, annoncé au clan, vainqueur confirmé par l’adversaire', async () => {
+  const ms = (await member.req('/api/state')).body.state;
+  const as = (await admin.req('/api/state')).body.state;
+  assert.equal((await anon.rpc('challenge', { toId: as.me })).status, 401);
+  assert.equal((await member.rpc('challenge', { toId: ms.me })).status, 400, 'pas de défi contre soi-même');
+  const r = await member.rpc('challenge', { toId: as.me, message: 'Sniper only' });
+  assert.equal(r.status, 200);
+  const id = r.body.result.id;
+  assert.equal((await member.rpc('challenge', { toId: as.me })).status, 400, 'un seul défi en cours par paire');
+  assert.equal((await member.rpc('answerChallenge', id, 'accept')).status, 400, 'seul l’adversaire répond');
+  assert.ok((await admin.req('/api/state')).body.state.data.notifications.some((n) => n.link === '#/defis' && n.text.includes('te défie')));
+  assert.equal((await admin.rpc('answerChallenge', id, 'accept')).status, 200);
+  const third = (await member.req('/api/state')).body.state.data.notifications.find((n) => n.text.startsWith('Combat 1v1'));
+  assert.ok(third, 'le combat est annoncé au clan');
+  assert.equal((await member.rpc('reportWinner', id, ms.me)).status, 200);
+  assert.equal((await member.rpc('confirmResult', id, 'yes')).status, 400, 'on ne confirme pas sa propre déclaration');
+  assert.equal((await admin.rpc('confirmResult', id, 'yes')).status, 200);
+  const st = (await member.req('/api/state')).body.state.data;
+  const c = st.challenges.find((x) => x.id === id);
+  assert.equal(c.status, 'done');
+  assert.equal(c.winnerId, ms.me);
+  assert.ok(st.notifications.some((n) => n.text.includes('a gagné son 1v1')), 'victoire annoncée');
+  assert.equal((await anon.req('/api/state')).body.state.data.challenges.length, 0, 'défis réservés aux membres');
+});
+
 test('déconnexion : ce téléphone ne reçoit plus les notifications du compte', async () => {
   const c = new Client();
   await c.login('membre@akatsuki.test', 'Membre2026!');

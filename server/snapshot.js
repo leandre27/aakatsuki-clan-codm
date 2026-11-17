@@ -47,5 +47,6 @@ export function snapshot(state, actor) {
     discipline: actor ? state.discipline.filter((d) => d.userId === actor.id || core.can('discipline.manage', actor)) : [],
     seasons: state.seasons,
     audit: core.can('audit.view', actor) ? state.audit : [],
+    challenges: memberish ? state.challenges : [],
   };
 }

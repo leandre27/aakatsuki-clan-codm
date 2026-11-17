@@ -31,10 +31,6 @@ const MEDIA_DIR = join(DATA_DIR, 'media');
 mkdirSync(MEDIA_DIR, { recursive: true });
 // Nom du dossier de la version en service (déploiement : releases/<commit>), vérifié après chaque mise en ligne
 const RELEASE = basename(ROOT);
-const DEMO_ACCOUNTS = [
-  { label: 'Membre', login: 'yoru', password: 'Membre2026!' },
-  { label: 'Super admin', login: 'kurogane', password: 'Akatsuki2026!' },
-];
 
 // ---------- Données ----------
 class HttpError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
@@ -118,7 +114,7 @@ if (PROD && DEMO) console.warn('ATTENTION : mode démonstration actif en product
 async function jobs() {
   try {
     await runMutation(null, () => {
-      core.ensureUpcoming(); core.remindTournaments(); core.remindActivities();
+      core.ensureUpcoming(); core.remindTournaments(); core.remindActivities(); core.expireChallenges();
       const d = new Date();
       if (d.getDay() === 0 && d.getHours() >= 20) core.weeklyDigest(); // dimanche soir
     });
@@ -253,7 +249,7 @@ function sameOrigin(req) {
 }
 
 function state(user) {
-  return { me: user?.id || null, data: snapshot(store.state, user), demo: DEMO, demoAccounts: DEMO ? DEMO_ACCOUNTS : undefined, vapidPublicKey: push.publicKey };
+  return { me: user?.id || null, data: snapshot(store.state, user), demo: DEMO, vapidPublicKey: push.publicKey };
 }
 
 // Liste blanche des mutations appelables et forme de leurs arguments
@@ -265,6 +261,7 @@ const RPC = {
   toggleReward: ['s'], acceptProposal: [], awardDistinction: ['o'], createAnnouncement: ['o'], archiveAnnouncement: ['s'],
   markAllRead: [], markRead: ['s'], addSanction: ['o'], saveRules: ['a'], saveGrades: ['a'], saveWeekly: ['a'],
   saveRolePerms: ['o'], saveRulebook: ['a'], closeSeason: ['o'], weeklyDigest: ['o?'], saveCard: ['s', 'o'],
+  challenge: ['o'], answerChallenge: ['s', 's'], cancelChallenge: ['s'], reportWinner: ['s', 's'], confirmResult: ['s', 's'], settleChallenge: ['s', 's'],
 };
 function checkArgs(spec, args) {
   if (!Array.isArray(args) || args.length > spec.length) return false;
@@ -380,14 +377,6 @@ async function api(req, res, url) {
     if (existsSync(file)) await utimes(file, new Date(), new Date());
     else await writeFile(file, buf, { mode: 0o644 });
     return json(req, res, 200, { url: `/media/${name}` });
-  }
-  if (url.pathname === '/api/demo/reset') {
-    if (!DEMO) throw new HttpError(404, 'Introuvable.');
-    if (!user?.roles.includes('superadmin')) throw new HttpError(403, 'Réservé au super administrateur.');
-    const fresh = await seedDemo();
-    await store.exclusive(() => store.replaceAll(fresh));
-    await jobs();
-    return json(req, res, 200, { state: state(findUser(user.id)) });
   }
 
   const m = url.pathname.match(/^\/api\/rpc\/([A-Za-z]+)$/);

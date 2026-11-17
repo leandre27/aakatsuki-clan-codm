@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { openDB } from './db.js';
 
-export const COLLECTIONS = ['users', 'transactions', 'activities', 'tournaments', 'rewards', 'requests', 'distinctions', 'announcements', 'notifications', 'discipline', 'seasons', 'audit'];
+export const COLLECTIONS = ['users', 'transactions', 'activities', 'tournaments', 'rewards', 'requests', 'distinctions', 'announcements', 'notifications', 'discipline', 'seasons', 'audit', 'challenges'];
 const APPEND_ONLY = new Set(['transactions', 'audit']);
 const LOCKED_TABLES = ['point_transactions', 'audit_logs'];
 const TABLE = { transactions: 'point_transactions', audit: 'audit_logs', requests: 'reward_requests', discipline: 'disciplinary_actions' };
@@ -141,7 +141,7 @@ export async function openStore({ url, dir }) {
       // TRUNCATE ne passe pas par les déclencheurs (et valide tout seul) : fait avant la transaction
       for (const c of COLLECTIONS) await db.run(`TRUNCATE TABLE ${tbl(c)}`);
     }
-    for (const c of COLLECTIONS) for (const r of data[c]) ops.push([`INSERT INTO ${tbl(c)} (id, data) VALUES (?, ?)`, [r.id, JSON.stringify(r)]]);
+    for (const c of COLLECTIONS) for (const r of data[c] || []) ops.push([`INSERT INTO ${tbl(c)} (id, data) VALUES (?, ?)`, [r.id, JSON.stringify(r)]]);
     ops.push([putSettings, ['main', JSON.stringify(data.settings)]]);
     await db.batch(ops);
     await load();

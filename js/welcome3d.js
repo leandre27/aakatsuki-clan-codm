@@ -361,12 +361,12 @@ export function playWelcome(u, { onClose } = {}) {
     for (const k of ORDER) {
       const c = cards[k]; if (!c) continue;
       scene.add(c.g);
-      c.a = t; c.b = t + 1.6; t += 1.5;
+      c.a = t; c.b = t + 2.7; t += 2.55; // chaque image reste bien visible avant de rejoindre l'affiche
       const name = k === 'character' ? card.characterName : k === 'weapon' ? card.weaponName : '';
       c.cap = text(captionTex(CAPTION[k], name), 1024 / 128);
       events.push([c.a, 'whoosh'], [c.a + 0.8, 'hit']);
     }
-    T_TITLE = t + 0.4; T_INFO = T_TITLE + 0.9; T_END = T_INFO + 1.1;
+    T_TITLE = t + 0.5; T_INFO = T_TITLE + 1; T_END = T_INFO + 1.2;
     events.push([0.25, 'whoosh'], [1.12, 'boom'], [T_TITLE - 0.25, 'whoosh'], [T_TITLE + 0.3, 'boom']);
     events.sort((a, b) => a[0] - b[0]);
   }
@@ -396,6 +396,7 @@ export function playWelcome(u, { onClose } = {}) {
   const buzz = (ev) => { if (BUZZ[ev] && !reduce && !recorder && navigator.vibrate && navigator.userActivation?.hasBeenActive !== false) { try { navigator.vibrate(BUZZ[ev]); } catch { /* refusé */ } } };
 
   // ---------- Boucle ----------
+  const HOLD = 9;
   let t = 0, last = 0, raf = 0, started = false, fired = 0, closed = false;
   const ptr = { x: 0, y: 0, tx: 0, ty: 0 };
   const impacts = () => [1.12, ...Object.values(cards).map((c) => c.a + 0.8), T_TITLE + 0.3];
@@ -407,6 +408,8 @@ export function playWelcome(u, { onClose } = {}) {
     t += dt;
     while (fired < events.length && events[fired][0] <= t) { const ev = events[fired++][1]; if (audio && soundOn) audio[ev]?.(); buzz(ev); }
     if (t >= T_END && !root.classList.contains('done')) { root.classList.add('done'); }
+    // L'affiche complète reste affichée quelques secondes, puis la présentation se ferme seule
+    if (t >= T_END + HOLD && !recorder) { close(); return; }
     const { W, H } = lay;
     ptr.x += (ptr.tx - ptr.x) * 0.05; ptr.y += (ptr.ty - ptr.y) * 0.05;
 
@@ -521,8 +524,8 @@ export function playWelcome(u, { onClose } = {}) {
   let recorder = null;
   const recBox = root.querySelector('.wel-rec');
   function onRecordFrame() {
-    recBox.querySelector('b').textContent = `${Math.max(0, Math.ceil(T_END + 2.5 - t))} s`;
-    if (t > T_END + 2.5 && recorder.state === 'recording') recorder.stop();
+    recBox.querySelector('b').textContent = `${Math.max(0, Math.ceil(T_END + 4 - t))} s`;
+    if (t > T_END + 4 && recorder.state === 'recording') recorder.stop();
   }
   async function record() {
     if (recorder) return;

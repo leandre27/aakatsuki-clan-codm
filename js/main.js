@@ -5,6 +5,7 @@ import * as pub from './views/public.js';
 import * as mem from './views/member.js';
 import * as adm from './views/admin.js';
 import * as wel from './views/welcome.js';
+import * as duels from './views/challenges.js';
 import { initPWA, installTopButton, bindInstall, syncPush } from './pwa.js';
 import { toast } from './ui.js';
 
@@ -13,7 +14,7 @@ const routes = [
   ['', pub.home], ['clan', pub.clan], ['classement', pub.leaderboard], ['calendrier', pub.calendar], ['recompenses', pub.rewards],
   ['rejoindre', pub.register], ['connexion', pub.login], ['reglement', mem.rulebook], ['annonces', mem.announcements],
   ['base', mem.dashboard, 'member'], ['profil', mem.profile, 'member'], ['joueur/:id', mem.profile, 'member'],
-  ['tournois', mem.tournaments, 'member'], ['tournoi/:id', mem.tournament, 'member'],
+  ['tournois', mem.tournaments, 'member'], ['defis', duels.challenges, 'member'], ['tournoi/:id', mem.tournament, 'member'],
   ['bienvenue/:id', wel.poster, 'member'], ['presentation', wel.editor, 'member'], ['presentation/:id', wel.editor, 'staff'],
   ['notifications', mem.notifications, 'auth'], ['moi', mem.menu, 'auth'], ['mot-de-passe', mem.firstPassword, 'auth'],
   ['admin', adm.overview, 'staff'], ['admin/membres', adm.members, 'staff'], ['admin/points', adm.points, 'staff'],
@@ -72,9 +73,9 @@ function chrome(path) {
   const annNew = member ? api.annUnread() : 0;
   const home = member ? '#/base' : '#/';
   const desktop = member
-    ? [['#/base', 'Base'], ['#/annonces', 'Annonces'], ['#/classement', 'Classement'], ['#/tournois', 'Tournois'], ['#/recompenses', 'Récompenses'], ['#/calendrier', 'Calendrier']]
+    ? [['#/base', 'Base'], ['#/annonces', 'Annonces'], ['#/classement', 'Classement'], ['#/tournois', 'Tournois'], ['#/defis', 'Défis 1v1'], ['#/recompenses', 'Récompenses'], ['#/calendrier', 'Calendrier']]
     : [['#/', 'Accueil'], ['#/clan', 'Le clan'], ['#/classement', 'Classement'], ['#/calendrier', 'Calendrier'], ['#/recompenses', 'Récompenses']];
-  const on = (h) => { const p = h.replace('#/', ''); return p === '' ? path === '' : path === p || path.startsWith(p + '/') || (p === 'tournois' && path.startsWith('tournoi/')); };
+  const on = (h) => { const p = h.replace('#/', ''); return p === '' ? path === '' : path === p || path.startsWith(p + '/') || (p === 'tournois' && (path.startsWith('tournoi/') || (path === 'defis' && innerWidth < 960))); };
   const offline = api.info().offline;
   const since = localStorage.getItem('akt.lastSync');
   document.getElementById('topbar').innerHTML = `${offline ? `<div class="offbar">Hors ligne · données du ${since ? new Date(since).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'dernier passage'}, en lecture seule</div>` : ''}<div class="wrap tb">
