@@ -149,7 +149,8 @@ export function stats() {
     const s = S[t.userId]; if (!s) continue;
     const at = new Date(t.at).getTime();
     s.balance += t.points;
-    if (t.kind === 'reward' || t.kind === 'reset') continue;
+    // Récompenses et paris 1v1 : le solde bouge, pas le classement
+    if (t.kind === 'reward' || t.kind === 'reset' || t.kind === 'bet') continue;
     s.permanent += t.points;
     if (at >= ss) { s.season += t.points; if (t.mode === 'MJ') s.mj += t.points; if (t.mode === 'BR') s.br += t.points; if (t.participation && t.points > 0) s.partSeason++; }
     if (at >= wk) s.week += t.points;
@@ -217,7 +218,7 @@ function pushTx({ userId, points, ruleId = null, label, reason, mode = null, act
     balanceBefore: before, balanceAfter: before + points,
   };
   db.transactions.push(t);
-  if (kind !== 'reward') notify(userId, `${points > 0 ? '+' : ''}${points} points : ${label}`, '#/profil?tab=historique');
+  if (kind !== 'reward' && kind !== 'bet') notify(userId, `${points > 0 ? '+' : ''}${points} points : ${label}`, '#/profil?tab=historique');
   return t;
 }
 
@@ -254,6 +255,7 @@ export function correctTx(txId, reason) {
   const t = db.transactions.find((x) => x.id === txId);
   if (!t) fail('Opération introuvable.');
   if (t.kind === 'reward' || t.kind === 'reset') fail('Les débits de récompense se corrigent depuis la demande.');
+  if (t.kind === 'bet') fail('Les mises 1v1 se règlent depuis le défi.');
   if (isCorrected(t) || t.correctionOf) fail('Cette opération a déjà été corrigée.');
   if (!reason || reason.trim().length < 5) fail('Une correction doit être justifiée par un motif.');
   const c = pushTx({ userId: t.userId, points: -t.points, ruleId: t.ruleId, label: `Correction : ${t.label}`, reason: reason.trim(), mode: t.mode, activityId: t.activityId, tournamentId: t.tournamentId, ref: t.ref, kind: 'correction', correctionOf: t.id });
@@ -344,8 +346,14 @@ export const CH_OPEN = ['pending', 'accepted', 'reported', 'disputed'];
 const challengeById = (id) => D().challenges.find((c) => c.id === id) || fail('Défi introuvable.');
 const pseudoOf = (id) => user(id)?.pseudo || 'un joueur';
 const otherOf = (c, id) => (c.fromId === id ? c.toId : c.fromId);
-export function challenge({ toId, message = '', at = '' }) {
+export const BET_MAX = 200;
+const stakeText = (c) => (c.stake ? `, ${c.stake} points en jeu chacun` : '');
+function betTx(userId, points, label, c) { pushTx({ userId, points, label, reason: label, kind: 'bet', ref: `ch:${c.id}` }); }
+export function challenge({ toId, message = '', at = '', stake = 0 }) {
   const u = mustActiveMember();
+  const bet = Number(stake) || 0;
+  if (!Number.isInteger(bet) || bet < 0 || bet > BET_MAX) fail(`La mise doit être un nombre entier entre 0 et ${BET_MAX} points.`);
+  if (bet && spendable(u.id) < bet) fail(`Tu n’as que ${spendable(u.id)} points disponibles pour miser.`);
   const o = user(toId);
   if (!o || o.status !== 'active') fail('Ce joueur ne peut pas être défié pour le moment.');
   if (o.id === u.id) fail('Tu ne peux pas te défier toi-même.');
@@ -353,9 +361,9 @@ export function challenge({ toId, message = '', at = '' }) {
   if (D().challenges.filter((c) => c.fromId === u.id && c.status === 'pending').length >= 5) fail('Tu as déjà 5 défis qui attendent une réponse.');
   let date = null;
   if (at) { const d = new Date(at); if (Number.isNaN(d.getTime())) fail('Date invalide.'); date = d.toISOString(); }
-  const c = { id: uid('ch'), fromId: u.id, toId: o.id, status: 'pending', message: str(message, 140).trim(), at: date, createdAt: nowISO() };
+  const c = { id: uid('ch'), fromId: u.id, toId: o.id, status: 'pending', message: str(message, 140).trim(), at: date, stake: bet, createdAt: nowISO() };
   D().challenges.push(c);
-  notify(o.id, `${u.pseudo} te défie en 1v1${date ? `, ${when(date)}` : ''}. Accepte ou refuse le défi.`, '#/defis');
+  notify(o.id, `${u.pseudo} te défie en 1v1${date ? `, ${when(date)}` : ''}${bet ? `, avec ${bet} points en jeu chacun (le vainqueur prend ${bet * 2})` : ''}. Accepte ou refuse le défi.`, '#/defis');
   commit();
   return { id: c.id };
 }
@@ -365,8 +373,15 @@ export function answerChallenge(id, answer) {
   if (c.toId !== u.id) fail('Ce défi ne t’est pas adressé.');
   if (c.status !== 'pending') fail('Ce défi n’attend plus de réponse.');
   const yes = answer === 'accept';
+  // Les mises sont prélevées à l'acceptation et gardées jusqu'au résultat
+  if (yes && c.stake) {
+    if (spendable(u.id) < c.stake) fail(`Il te faut ${c.stake} points disponibles pour accepter cette mise (tu en as ${spendable(u.id)}).`);
+    if (spendable(c.fromId) < c.stake) fail(`${pseudoOf(c.fromId)} n’a plus assez de points pour cette mise.`);
+    betTx(c.fromId, -c.stake, `Mise 1v1 contre ${u.pseudo}`, c);
+    betTx(u.id, -c.stake, `Mise 1v1 contre ${pseudoOf(c.fromId)}`, c);
+  }
   c.status = yes ? 'accepted' : 'declined'; c.respondedAt = nowISO();
-  if (yes) notifyAll(`Combat 1v1 : ${pseudoOf(c.fromId)} contre ${u.pseudo}${c.at ? `, ${when(c.at)}` : ''}. Qui va l’emporter ?`, '#/defis');
+  if (yes) notifyAll(`Combat 1v1 : ${pseudoOf(c.fromId)} contre ${u.pseudo}${c.at ? `, ${when(c.at)}` : ''}${stakeText(c)}. Qui va l’emporter ?`, '#/defis');
   else notify(c.fromId, `${u.pseudo} a refusé ton défi 1v1.`, '#/defis');
   commit();
 }
@@ -375,6 +390,8 @@ export function cancelChallenge(id) {
   const c = challengeById(id);
   if (![c.fromId, c.toId].includes(u.id)) fail('Ce défi ne te concerne pas.');
   if (c.status === 'pending' ? c.fromId !== u.id : c.status !== 'accepted') fail('Ce défi ne peut plus être annulé.');
+  // Défi annulé avant le combat : chacun récupère sa mise
+  if (c.status === 'accepted' && c.stake) for (const id of [c.fromId, c.toId]) betTx(id, c.stake, `Mise 1v1 remboursée (défi annulé)`, c);
   c.status = 'cancelled'; c.cancelledBy = u.id; c.doneAt = nowISO();
   notify(otherOf(c, u.id), `${u.pseudo} a annulé le défi 1v1.`, '#/defis');
   commit();
@@ -382,7 +399,8 @@ export function cancelChallenge(id) {
 function finishChallenge(c, winnerId) {
   c.status = 'done'; c.winnerId = winnerId; c.doneAt = nowISO();
   const loser = otherOf(c, winnerId);
-  notifyAll(`${pseudoOf(winnerId)} a gagné son 1v1 contre ${pseudoOf(loser)}.`, '#/defis');
+  if (c.stake) betTx(winnerId, c.stake * 2, `Pari 1v1 gagné contre ${pseudoOf(loser)}`, c);
+  notifyAll(`${pseudoOf(winnerId)} a gagné son 1v1 contre ${pseudoOf(loser)}${c.stake ? ` et remporte ${c.stake * 2} points` : ''}.`, '#/defis');
 }
 // Un joueur déclare le vainqueur. S'il reconnaît sa défaite, c'est terminé ; sinon l'adversaire confirme.
 export function reportWinner(id, winnerId) {

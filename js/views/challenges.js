@@ -12,6 +12,7 @@ function duel(c, actions = '') {
   const meta = [c.at ? `${I.clock} ${fmtDT(c.at)}` : '', c.status === 'done' ? `Joué ${ago(c.doneAt)}` : `Lancé ${ago(c.createdAt)}`].filter(Boolean).join(' · ');
   return `<li class="duel" id="d-${c.id}">
     <div class="duel-top">${pill(c)}<span class="duel-meta">${meta}</span></div>
+    ${c.stake ? `<p class="duel-bet">${I.coin} ${c.status === 'done' ? `${esc(who(c.winnerId).pseudo)} a remporté <b>${c.stake * 2} pts</b>` : `<b>${c.stake} pts</b> misés chacun · <b>${c.stake * 2} pts</b> au vainqueur`}</p>` : ''}
     <div class="duel-vs">${side(a)}<span class="vs">VS</span>${side(b)}</div>
     ${c.message ? `<p class="duel-msg">« ${esc(c.message)} »</p>` : ''}
     ${actions ? `<div class="duel-act">${actions}</div>` : ''}
@@ -30,7 +31,7 @@ export function challenges({ query, rerender }) {
   // Ce qui attend une action de ma part, puis ce qui attend l'adversaire
   const todo = [], waiting = [];
   for (const c of mine.filter((x) => api.CH_OPEN.includes(x.status))) {
-    if (c.status === 'pending' && c.toId === me.id) todo.push(duel(c, `<button class="btn btn-sm" data-accept="${c.id}">${I.check} Accepter</button><button class="btn btn-sm btn-line" data-decline="${c.id}">Refuser</button>`));
+    if (c.status === 'pending' && c.toId === me.id) todo.push(duel(c, `<button class="btn btn-sm" data-accept="${c.id}">${I.check} Accepter${c.stake ? ` · miser ${c.stake} pts` : ''}</button><button class="btn btn-sm btn-line" data-decline="${c.id}">Refuser</button>`));
     else if (c.status === 'pending') waiting.push(duel(c, `<span class="muted small">En attente de ${esc(vs(c).pseudo)}</span><button class="btn btn-sm btn-ghost" data-cancel="${c.id}">Annuler</button>`));
     else if (c.status === 'accepted') todo.push(duel(c, `<button class="btn btn-sm" data-report="${c.id}">${I.cup} Déclarer le vainqueur</button><button class="btn btn-sm btn-ghost" data-cancel="${c.id}">Annuler</button>`));
     else if (c.status === 'reported' && c.reportedBy !== me.id) todo.push(duel(c, `<span class="small">${esc(who(c.reportedBy).pseudo)} déclare avoir gagné.</span><button class="btn btn-sm" data-confirm="${c.id}">Confirmer</button><button class="btn btn-sm btn-line" data-dispute="${c.id}">Contester</button>`));
@@ -43,8 +44,8 @@ export function challenges({ query, rerender }) {
   const settleBtns = (c) => [c.fromId, c.toId].map((id) => `<button class="btn btn-sm btn-line" data-settle="${c.id}" data-w="${id}">${esc(who(id).pseudo)} a gagné</button>`).join('');
 
   const html = `<div class="wrap page">
-    ${head('Défis 1v1', 'Défie un membre du clan. Le combat accepté est annoncé à tout le clan, le vainqueur aussi.', active ? `<button class="btn btn-sm" id="new">${I.target} Défier un joueur</button>` : '')}
-    <div class="ch-rec"><div><b>${rec.wins}</b><span>Victoires</span></div><div><b>${rec.losses}</b><span>Défaites</span></div><div><b>${mine.filter((c) => api.CH_OPEN.includes(c.status)).length}</b><span>En cours</span></div></div>
+    ${head('Défis 1v1', 'Défie un membre du clan, mise des points si tu veux. Le combat accepté est annoncé à tout le clan, le vainqueur aussi.', active ? `<button class="btn btn-sm" id="new">${I.target} Défier un joueur</button>` : '')}
+    <div class="ch-rec"><div><b>${rec.wins}</b><span>Victoires</span></div><div><b>${rec.losses}</b><span>Défaites</span></div><div><b>${api.spendable(me.id)}</b><span>Points à miser</span></div></div>
     ${!active ? '<p class="alert">Ton compte doit être actif pour lancer ou accepter un défi.</p>' : ''}
     ${todo.length ? `<section class="sec"><div class="sec-head"><h2>À toi de jouer</h2></div><ul class="duels">${todo.join('')}</ul></section>` : ''}
     ${toSettle.length ? `<section class="sec"><div class="sec-head"><h2>${I.shield} À trancher</h2></div><ul class="duels">${toSettle.map((c) => duel(c, settleBtns(c))).join('')}</ul></section>` : ''}
@@ -65,7 +66,11 @@ export function challenges({ query, rerender }) {
       root.querySelector('#new2')?.addEventListener('click', open);
       if (query.vs && active) { history.replaceState(null, '', '#/defis'); newChallenge(rerender, query.vs); }
       const on = (sel, fn) => root.querySelectorAll(sel).forEach((b) => (b.onclick = act(() => fn(b))));
-      on('[data-accept]', async (b) => { await api.answerChallenge(b.dataset.accept, 'accept'); done('Défi accepté : le combat est annoncé au clan.'); });
+      on('[data-accept]', async (b) => {
+        const c = api.data().challenges.find((x) => x.id === b.dataset.accept);
+        if (c?.stake && !(await ask('Accepter le pari', `${c.stake} points sont prélevés de ton solde maintenant, comme pour ${who(c.fromId).pseudo}. Le vainqueur remporte ${c.stake * 2} points. Si le défi est annulé, chacun est remboursé.`, { label: `Miser ${c.stake} pts` }))) return;
+        await api.answerChallenge(b.dataset.accept, 'accept'); done('Défi accepté : le combat est annoncé au clan.');
+      });
       on('[data-decline]', async (b) => { if (!(await ask('Refuser le défi', 'Ton adversaire sera prévenu.', { label: 'Refuser' }))) return; await api.answerChallenge(b.dataset.decline, 'decline'); done('Défi refusé.'); });
       on('[data-cancel]', async (b) => { if (!(await ask('Annuler le défi', 'Ton adversaire sera prévenu.', { label: 'Annuler le défi', danger: true }))) return; await api.cancelChallenge(b.dataset.cancel); done('Défi annulé.'); });
       on('[data-report]', (b) => reportSheet(api.data().challenges.find((c) => c.id === b.dataset.report), rerender));
@@ -101,6 +106,9 @@ export function newChallenge(rerender, preset = '') {
   sheet('Défier un joueur', `<form class="stack" id="chf">
     <label class="field"><span>Adversaire</span><input type="search" id="chq" placeholder="Chercher un pseudo" autocomplete="off"></label>
     <div class="picker ch-players">${players.map((u) => `<label class="pick" data-name="${esc(u.pseudo.toLowerCase())}"><input type="radio" name="toId" value="${u.id}" ${u.id === preset ? 'checked' : ''} ${busy.has(u.id) ? 'disabled' : ''} required>${avatar(u, 'sm')}<span>${esc(u.pseudo)}${busy.has(u.id) ? ' <small>défi en cours</small>' : ''}</span></label>`).join('')}</div>
+    <div class="field"><span>Mise (facultatif) · tu as ${api.spendable(me.id)} pts à miser</span>
+      <div class="seg ch-stakes">${[0, 10, 15, 25, 50, 100].map((v) => `<label><input type="radio" name="stake" value="${v}" ${v === 0 ? 'checked' : ''} ${v > api.spendable(me.id) ? 'disabled' : ''}><span>${v ? `${v} pts` : 'Sans'}</span></label>`).join('')}</div>
+      <small>Chacun mise la même somme, prélevée quand l’adversaire accepte. Le vainqueur prend tout ; défi annulé, chacun est remboursé. Les paris changent ton solde, pas ton classement.</small></div>
     <label class="field"><span>Quand (facultatif)</span><input type="datetime-local" name="at" min="${toLocalInput(new Date().toISOString())}"></label>
     <label class="field"><span>Message (facultatif)</span><input name="message" maxlength="140" placeholder="Ex. Sniper only, meilleur des 3"></label>
     <button class="btn btn-block">${I.target} Envoyer le défi</button>
@@ -111,7 +119,7 @@ export function newChallenge(rerender, preset = '') {
       e.preventDefault();
       const f = Object.fromEntries(new FormData(e.target));
       if (!f.toId) throw new Error('Choisis ton adversaire.');
-      await api.challenge({ toId: f.toId, message: f.message || '', at: f.at ? new Date(f.at).toISOString() : '' });
+      await api.challenge({ toId: f.toId, message: f.message || '', at: f.at ? new Date(f.at).toISOString() : '', stake: Number(f.stake) || 0 });
       close();
       toast(`Défi envoyé à ${who(f.toId).pseudo}.`);
       if (location.hash.startsWith('#/defis')) { if (location.hash !== '#/defis') location.hash = '#/defis'; else rerender(); } else location.hash = '#/defis';

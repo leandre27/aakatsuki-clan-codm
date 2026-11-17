@@ -914,3 +914,7 @@ fieldset:not([hidden]) { animation: pageIn .3s var(--ease) both; }
 .mvp-play { width: 40px; height: 40px; display: grid; place-items: center; background: var(--gold); color: var(--ink); border-radius: 50%; }
 .mvp-play .ic { width: 18px; height: 18px; }
 .medals li > a { display: flex; align-items: center; gap: var(--s-3); width: 100%; }
+.duel-bet { margin-top: var(--s-2); display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px var(--s-3); background: var(--gold-bg); border: 1px solid var(--gold-d); border-radius: var(--r); color: var(--gold); font-size: 13px; }
+.duel-bet b { color: var(--tx); }
+.duel-bet .ic { width: 18px; height: 18px; }
+.ch-stakes { flex-wrap: wrap; }

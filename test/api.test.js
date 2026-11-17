@@ -380,6 +380,31 @@ test('défi 1v1 : accepté, annoncé au clan, vainqueur confirmé par l’advers
   assert.equal((await anon.req('/api/state')).body.state.data.challenges.length, 0, 'défis réservés aux membres');
 });
 
+test('pari 1v1 : mises prélevées à l’acceptation, le vainqueur prend tout, remboursement si annulé', async () => {
+  const ms = (await member.req('/api/state')).body.state;
+  const as = (await admin.req('/api/state')).body.state;
+  const bal = async (c, id) => (await c.req('/api/state')).body.state.data.transactions.filter((t) => t.userId === id).reduce((a, t) => a + t.points, 0);
+  const rank = async (id) => (await member.req('/api/state')).body.state.data.transactions.filter((t) => t.userId === id && t.kind !== 'reward' && t.kind !== 'bet' && t.kind !== 'reset').reduce((a, t) => a + t.points, 0);
+  const m0 = await bal(member, ms.me), a0 = await bal(member, as.me), r0 = await rank(ms.me);
+  assert.equal((await member.rpc('challenge', { toId: as.me, stake: 999999 })).status, 400, 'mise plafonnée');
+  assert.equal((await member.rpc('challenge', { toId: as.me, stake: 2.5 })).status, 400, 'mise entière');
+  const id = (await member.rpc('challenge', { toId: as.me, stake: 15 })).body.result.id;
+  assert.equal(await bal(member, ms.me), m0, 'rien n’est prélevé avant l’acceptation');
+  assert.equal((await admin.rpc('answerChallenge', id, 'accept')).status, 200);
+  assert.equal(await bal(member, ms.me), m0 - 15);
+  assert.equal(await bal(member, as.me), a0 - 15);
+  assert.equal((await member.rpc('reportWinner', id, as.me)).status, 200, 'le membre reconnaît sa défaite');
+  assert.equal(await bal(member, ms.me), m0 - 15, 'le perdant paie sa mise');
+  assert.equal(await bal(member, as.me), a0 + 15, 'le vainqueur prend les 30 points');
+  assert.equal(await rank(ms.me), r0, 'le classement ne bouge pas');
+  // Défi accepté puis annulé : chacun est remboursé
+  const id2 = (await member.rpc('challenge', { toId: as.me, stake: 10 })).body.result.id;
+  await admin.rpc('answerChallenge', id2, 'accept');
+  assert.equal((await member.rpc('cancelChallenge', id2)).status, 200);
+  assert.equal(await bal(member, ms.me), m0 - 15);
+  assert.equal(await bal(member, as.me), a0 + 15);
+});
+
 test('joueur du mois : statistiques gardées, tout le clan invité à voir l’animation', async () => {
   const ms = (await member.req('/api/state')).body.state;
   assert.equal((await member.rpc('awardDistinction', { userId: ms.me, title: 'MVP du mois', period: 'novembre 2026' })).status, 400, 'réservé à l’encadrement');

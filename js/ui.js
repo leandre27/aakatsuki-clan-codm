@@ -186,7 +186,7 @@ export function txRow(t, { showUser = false, correct = false } = {}) {
       ${t.reason && t.reason !== t.label ? `<span>${esc(t.reason)}</span>` : ''}
       <small>${fmtDT(t.at)}${by ? ` · par ${esc(by.pseudo)}` : ''} · solde ${nf(t.balanceBefore)} → ${nf(t.balanceAfter)}${api.isCorrected(t) ? ' · corrigée' : ''}</small>
     </div>
-    ${correct && !api.isCorrected(t) && !t.correctionOf && !['reward', 'reset'].includes(t.kind) ? `<button class="icon-btn" data-correct="${t.id}" aria-label="Corriger">${I.undo}</button>` : ''}
+    ${correct && !api.isCorrected(t) && !t.correctionOf && !['reward', 'reset', 'bet'].includes(t.kind) ? `<button class="icon-btn" data-correct="${t.id}" aria-label="Corriger">${I.undo}</button>` : ''}
   </li>`;
 }
 

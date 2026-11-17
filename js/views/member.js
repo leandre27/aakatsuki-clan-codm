@@ -282,7 +282,7 @@ function weeklyChart(userId) {
   const weeks = [];
   const start = new Date(); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
   for (let i = 7; i >= 0; i--) weeks.push(start.getTime() - i * 7 * 864e5);
-  const vals = weeks.map((w) => api.history(userId).filter((t) => !['reward', 'reset'].includes(t.kind)).filter((t) => { const a = new Date(t.at).getTime(); return a >= w && a < w + 7 * 864e5; }).reduce((s, t) => s + t.points, 0));
+  const vals = weeks.map((w) => api.history(userId).filter((t) => !['reward', 'reset', 'bet'].includes(t.kind)).filter((t) => { const a = new Date(t.at).getTime(); return a >= w && a < w + 7 * 864e5; }).reduce((s, t) => s + t.points, 0));
   const max = Math.max(10, ...vals);
   return `<div class="chart" role="img" aria-label="Points par semaine">${vals.map((v, i) => `<div class="col"><span class="v">${v || ''}</span><i style="--h:${Math.max(2, (Math.max(0, v) / max) * 100)}%" class="${i === vals.length - 1 ? 'now' : ''}"></i><small>${new Date(weeks[i]).toLocaleDateString('fr-FR', { day: 'numeric', month: 'numeric' })}</small></div>`).join('')}</div>`;
 }
