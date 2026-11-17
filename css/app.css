@@ -843,3 +843,8 @@ fieldset:not([hidden]) { animation: pageIn .3s var(--ease) both; }
 .pst-actions { margin-top: var(--s-5); }
 .pst-actions .av { width: 22px; height: 22px; font-size: 10px; }
 .wel-rec[hidden] { display: none; }
+.onboard-head { display: flex; align-items: center; gap: var(--s-4); margin-bottom: var(--s-3); }
+.onboard-head h1 { font-size: clamp(24px, 6vw, 34px); text-transform: uppercase; }
+.onboard-head p { text-transform: uppercase; letter-spacing: .1em; font: 600 12px var(--fd); color: var(--red-tx); }
+.onboard-act { margin-top: var(--s-2); }
+.onboard-act .btn { width: 100%; justify-content: center; }

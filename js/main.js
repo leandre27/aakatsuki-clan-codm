@@ -47,6 +47,10 @@ function render({ keepScroll = false } = {}) {
     if (m.guard === 'member' && !member) m = { view: mem.pending, params: {}, pat: 'pending' };
     if (m.guard === 'staff' && !api.isStaff(u)) { location.hash = '#/base'; return; }
   }
+  // Membre sans carte de présentation : on la lui demande une fois sur cet appareil (il peut choisir « Plus tard »)
+  if (u && m.guard && !u.mustChangePassword && u.status === 'active' && !u.card?.publishedAt && !['presentation', 'mot-de-passe'].includes(m.pat) && !localStorage.getItem(`akt.card.asked.${u.id}`)) {
+    location.hash = '#/presentation?bienvenue=1'; return;
+  }
   if (cleanup) { try { cleanup(); } catch (e) { console.warn(e); } cleanup = null; }
   const view = document.getElementById('view');
   const samePage = path === lastPath;

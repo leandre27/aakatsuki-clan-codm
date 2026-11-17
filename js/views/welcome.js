@@ -22,15 +22,19 @@ const slotHtml = (k, url) => {
   </div>`;
 };
 
-export function editor({ params }) {
+export function editor({ params, query = {} }) {
   const meU = api.me();
   const u = params.id ? api.user(params.id) : meU;
   const own = u?.id === meU.id;
   if (!u || (!own && !api.can('members.manage'))) return { html: `<div class="wrap page">${empty('Membre introuvable.')}</div>` };
   const card = { ...(u.card || {}) };
   const published = !!card.publishedAt;
+  // Étape d'accueil, juste après le choix du mot de passe
+  const onboard = own && !published && query.bienvenue === '1';
+  if (own) localStorage.setItem(`akt.card.asked.${u.id}`, '1');
   const html = `<div class="wrap page narrow">
-    ${head(own ? 'Ma carte de présentation' : `Présentation · ${u.pseudo}`, own
+    ${onboard ? `<div class="onboard-head">${avatar(u, 'lg')}<div><p class="muted small">Dernière étape</p><h1>Crée ta carte de présentation</h1></div></div>
+      <p class="muted">Ta photo, ton personnage favori, la capture de ton profil CODM et ton arme favorite. Dès que tu valides, tout le clan te découvre dans une animation de bienvenue, avec ton nom.</p>` : head(own ? 'Ma carte de présentation' : `Présentation · ${u.pseudo}`, own
       ? 'Comme les affiches du clan : ta photo, ton personnage favori, ton profil CODM et ton arme favorite. Le clan te découvre dans une animation 3D plein écran.'
       : `Les quatre images de ${esc(u.pseudo)}, jouées en animation 3D pour tout le clan.`)}
     <form id="cf" class="stack">
@@ -40,13 +44,17 @@ export function editor({ params }) {
       <label class="field"><span>Nom de l’arme (facultatif)</span><input name="weaponName" maxlength="40" value="${esc(card.weaponName || '')}" placeholder="Ex. DL Q33, Fennec"></label>
       <label class="field"><span>Devise (facultatif)</span><input name="motto" maxlength="90" value="${esc(card.motto || '')}" placeholder="Une phrase qui te ressemble"></label>
       ${published && api.can('members.manage') ? `<label class="check"><input type="checkbox" name="announce"><span>Annoncer de nouveau à tout le clan</span></label>` : ''}
-      <p class="small muted">${published
+      ${onboard ? `<div class="row2 onboard-act">
+        <a class="btn btn-line btn-lg" href="#/base" id="later">Plus tard</a>
+        <button class="btn btn-lg" id="save">Valider</button>
+      </div>
+      <p class="small muted center">Tu pourras la créer ou la modifier quand tu veux depuis « Moi ».</p>` : `<p class="small muted">${published
         ? `Publiée le ${fmtDT(card.publishedAt)}. Les changements s’affichent pour tout le clan, sans nouvelle notification.`
         : 'À la publication, tout le clan reçoit une notification et découvre l’animation.'}</p>
       <div class="row end">
         <button type="button" class="btn btn-line" id="prev">${I.play} Aperçu</button>
         <button class="btn" id="save">${published ? 'Enregistrer' : 'Publier'}</button>
-      </div>
+      </div>`}
     </form>
   </div>`;
   return {
@@ -54,7 +62,7 @@ export function editor({ params }) {
     mount(root) {
       const form = root.querySelector('#cf');
       let busy = 0;
-      const setBusy = (d) => { busy += d; root.querySelector('#save').disabled = busy > 0; root.querySelector('#prev').disabled = busy > 0; };
+      const setBusy = (d) => { busy += d; root.querySelector('#save').disabled = busy > 0; const p = root.querySelector('#prev'); if (p) p.disabled = busy > 0; };
       const fields = () => {
         const f = Object.fromEntries(new FormData(form));
         return { characterName: f.characterName || '', weaponName: f.weaponName || '', motto: f.motto || '' };
@@ -72,10 +80,11 @@ export function editor({ params }) {
         root.querySelectorAll('[data-clear]').forEach((b) => (b.onclick = () => { card[b.dataset.clear] = null; redraw(b.dataset.clear); }));
       }
       bind();
-      root.querySelector('#prev').onclick = act(async () => {
+      root.querySelector('#later')?.addEventListener('click', () => toast(`Bienvenue dans l’espace du clan, ${u.pseudo}.`));
+      root.querySelector('#prev')?.addEventListener('click', act(async () => {
         if (!card.photo && !card.character && !u.avatar) throw new Error('Ajoute au moins ta photo ou ton personnage favori.');
         await openWelcome({ ...u, card: { ...card, ...fields() } }, { preview: true });
-      });
+      }));
       form.onsubmit = act(async (e) => {
         e.preventDefault();
         if (busy) return;

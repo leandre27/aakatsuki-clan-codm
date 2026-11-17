@@ -391,6 +391,10 @@ export function playWelcome(u, { onClose } = {}) {
     if (soundOn && t < T_END) audio.drone();
   };
 
+  // Vibration du téléphone avec les impacts (Android ; iPhone ne le permet pas aux sites)
+  const BUZZ = { boom: [70, 40, 40], hit: [28] };
+  const buzz = (ev) => { if (BUZZ[ev] && !reduce && !recorder && navigator.vibrate && navigator.userActivation?.hasBeenActive !== false) { try { navigator.vibrate(BUZZ[ev]); } catch { /* refusé */ } } };
+
   // ---------- Boucle ----------
   let t = 0, last = 0, raf = 0, started = false, fired = 0, closed = false;
   const ptr = { x: 0, y: 0, tx: 0, ty: 0 };
@@ -401,7 +405,7 @@ export function playWelcome(u, { onClose } = {}) {
     raf = requestAnimationFrame(frame);
     const dt = Math.min(0.05, (now - (last || now)) / 1000); last = now;
     t += dt;
-    while (fired < events.length && events[fired][0] <= t) { const ev = events[fired++][1]; if (audio && soundOn) audio[ev]?.(); }
+    while (fired < events.length && events[fired][0] <= t) { const ev = events[fired++][1]; if (audio && soundOn) audio[ev]?.(); buzz(ev); }
     if (t >= T_END && !root.classList.contains('done')) { root.classList.add('done'); }
     const { W, H } = lay;
     ptr.x += (ptr.tx - ptr.x) * 0.05; ptr.y += (ptr.ty - ptr.y) * 0.05;

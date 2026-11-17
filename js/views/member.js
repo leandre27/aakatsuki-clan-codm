@@ -31,8 +31,8 @@ export function firstPassword() {
         if (f.next === f.current) throw new Error('Choisis un mot de passe différent du provisoire.');
         await api.changePassword(f.current, f.next);
         syncPush();
-        toast(`C’est fait. Bienvenue dans l’espace du clan, ${u.pseudo}.`);
-        location.hash = '#/base';
+        // Étape suivante : se présenter au clan (photo, personnage, profil, arme)
+        location.hash = '#/presentation?bienvenue=1';
       });
       root.querySelector('#lo').onclick = act(async () => { await api.logout(); location.hash = '#/connexion'; });
     },
