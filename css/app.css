@@ -937,3 +937,13 @@ select { text-overflow: ellipsis; }
 .s-act { display: flex; align-items: center; gap: var(--s-1); }
 .s-act .icon-btn { width: 36px; height: 36px; color: var(--mu); }
 .s-act .icon-btn:hover { color: var(--red-tx); }
+/* Les colonnes du tableau de bord ne s'élargissent pas avec un carrousel : il défile à l'intérieur */
+.dash-grid > * { min-width: 0; }
+.faces .hscroll { overscroll-behavior-x: contain; }
+/* Petits écrans : la barre du haut d'un responsable (5 boutons) tient sans toucher le bord */
+@media (max-width: 420px) {
+  .tb { gap: var(--s-3); }
+  .tb-right { gap: 2px; }
+  .tb-right .icon-btn { width: 36px; }
+  .tb-right .tb-install { padding: 0 6px; }
+}
