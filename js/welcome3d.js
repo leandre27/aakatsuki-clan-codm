@@ -32,12 +32,12 @@ function fitFont(g, parts, weight, family, max, width) {
   return { size, width: total() };
 }
 // Pseudo façon affiche : 影 AK- en blanc, la suite en rouge, lettres usées au pinceau
-function titleTex(pseudo) {
+function titleTex(pseudo, pal = { sigil: RED, head: WHITE, tail: RED }) {
   const name = String(pseudo).replace(/影/g, '').trim() || String(pseudo);
   const i = name.lastIndexOf('-');
   const head = i > 0 && i < name.length - 1 ? name.slice(0, i + 1) : '';
   const tail = head ? name.slice(i + 1) : name;
-  const parts = [['影 ', RED], [head, WHITE], [tail, head ? RED : WHITE], [' 影', RED]].filter(([t]) => t);
+  const parts = [['影 ', pal.sigil], [head, pal.head], [tail, head ? pal.tail : pal.head], [' 影', pal.sigil]].filter(([t]) => t);
   return canvasTex(2048, 360, (g, w, h) => {
     const { size, width } = fitFont(g, parts, 700, FD, 240, w * 0.84);
     g.save(); g.translate(w / 2, h / 2 + size * 0.36); g.transform(1, 0, -0.2, 1, 0, 0);
@@ -223,6 +223,8 @@ function makeAudio() {
     setOn(on) { master.gain.setTargetAtTime(on ? 0.85 : 0, ctx.currentTime, 0.04); },
     boom() { const t = ctx.currentTime; tone(t, 'sine', 130, 34, 1.2, 0.9); tone(t, 'triangle', 70, 30, 0.6, 0.35); noise(t, 0.4, 'lowpass', 1200, 160, 0.5); },
     hit() { const t = ctx.currentTime; tone(t, 'triangle', 200, 70, 0.3, 0.45); noise(t, 0.12, 'highpass', 2500, 1200, 0.18); },
+    roll() { const t = ctx.currentTime; for (let i = 0; i < 22; i++) { const at = t + 1.5 * (1 - Math.pow(1 - i / 22, 1.6)); noise(at, 0.07, 'bandpass', 900, 500, 0.12 + i * 0.012, 2); tone(at, 'triangle', 150, 90, 0.08, 0.08 + i * 0.006); } },
+    chime() { const t = ctx.currentTime; for (const [f, k] of [[880, 0.3], [1320, 0.2], [1760, 0.12], [2640, 0.06]]) tone(t, 'sine', f, f * 0.995, 2.2, k); },
     whoosh(d = 0.7) { noise(ctx.currentTime, d, 'bandpass', 300, 3200, 0.32, 1.4); },
     drone() {
       this.stopDrone();
@@ -248,18 +250,19 @@ function pickMime() {
 }
 const slug = (s) => String(s).normalize('NFKD').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'membre';
 
-// ---------- Lecture ----------
-// u : membre (avec u.card). Renvoie une fonction qui ferme la présentation.
-export function playWelcome(u, { onClose } = {}) {
-  const card = u.card || {};
+
+// ---------- Scène plein écran commune (présentation d'un membre, joueur du mois) ----------
+// setup(ctx) prépare sa scène et renvoie { ready, build() → { T_END, events, impacts }, frame(t, dt) }.
+// La coque gère l'écran, la caméra, le son, la vibration, les boutons et l'export vidéo.
+export function runShow({ label, loading, fileName, shareTitle, onClose, setup }) {
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const mime = pickMime();
   const root = document.createElement('div');
   root.className = 'wel';
   root.setAttribute('role', 'dialog'); root.setAttribute('aria-modal', 'true');
-  root.setAttribute('aria-label', `Présentation de ${u.pseudo}`);
+  root.setAttribute('aria-label', label);
   root.innerHTML = `<canvas class="wel-cv"></canvas>
-    <p class="wel-load">Préparation de la présentation</p>
+    <p class="wel-load"></p>
     <div class="wel-bar">
       <button class="wel-btn" data-sound aria-pressed="false">${I.mute}<span>Son</span></button>
       <span class="wel-gap"></span>
@@ -269,6 +272,7 @@ export function playWelcome(u, { onClose } = {}) {
     </div>
     <button class="wel-skip" data-skip>Passer ${I.right}</button>
     <p class="wel-rec" hidden><i></i>Enregistrement de la vidéo <b>0 s</b></p>`;
+  root.querySelector('.wel-load').textContent = loading;
   document.body.appendChild(root);
   document.body.classList.add('locked');
   requestAnimationFrame(() => root.classList.add('on'));
@@ -287,18 +291,162 @@ export function playWelcome(u, { onClose } = {}) {
   const rim = new THREE.DirectionalLight(0xff3b30, 2.2); rim.position.set(-6, -2, 2); scene.add(rim);
 
   let fixed = null; // taille imposée pendant l'enregistrement vidéo (portrait 720 × 1280)
-  let lay = layout(1, 1);
+  const view = { W: 1, H: 1 };
   function resize() {
     const w = fixed ? fixed.w : canvas.clientWidth || innerWidth, h = fixed ? fixed.h : canvas.clientHeight || innerHeight;
     renderer.setPixelRatio(fixed ? 1 : Math.min(devicePixelRatio, 2));
     renderer.setSize(w, h, false);
     camera.aspect = w / h; camera.updateProjectionMatrix();
-    const H = 2 * CAM_Z * Math.tan((camera.fov * Math.PI) / 360);
-    lay = layout(H * camera.aspect, H);
+    view.H = 2 * CAM_Z * Math.tan((camera.fov * Math.PI) / 360);
+    view.W = view.H * camera.aspect;
     canvas.classList.toggle('is-fixed', !!fixed);
   }
   const ro = new ResizeObserver(() => resize()); ro.observe(canvas); resize();
 
+  const loader = new THREE.TextureLoader();
+  const load = (url) => loader.loadAsync(url).then((tx) => { tx.colorSpace = THREE.SRGBColorSpace; tx.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy()); return tx; });
+  const text = (tex, aspect) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(aspect, 1), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false })); m.renderOrder = 5; scene.add(m); return m; };
+  const show = setup({ scene, camera, renderer, view, CAM_Z, reduce, load, text });
+  let T_END = 5, events = [], impacts = [];
+
+  // Son : coupé par défaut tant que le navigateur ne l'autorise pas (il faut un toucher)
+  const audio = makeAudio();
+  let soundOn = false;
+  const soundBtn = root.querySelector('[data-sound]');
+  function setSound(on) {
+    soundOn = !!on && !!audio?.running;
+    audio?.setOn(soundOn);
+    soundBtn.setAttribute('aria-pressed', String(soundOn));
+    soundBtn.innerHTML = `${soundOn ? I.sound : I.mute}<span>Son</span>`;
+  }
+  if (!audio) soundBtn.hidden = true;
+  else if (localStorage.getItem('akt.wel.sound') !== '0') audio.ctx.resume().then(() => setSound(true)).catch(() => {});
+  soundBtn.onclick = async () => {
+    if (!audio) return;
+    await audio.ctx.resume().catch(() => {});
+    setSound(!soundOn);
+    localStorage.setItem('akt.wel.sound', soundOn ? '1' : '0');
+    if (soundOn && t < T_END) audio.drone();
+  };
+
+  // Vibration du téléphone avec les impacts (Android ; iPhone ne le permet pas aux sites)
+  const BUZZ = { boom: [70, 40, 40], hit: [28], roll: [12, 30, 12, 30, 12, 30, 12] };
+  const buzz = (ev) => { if (BUZZ[ev] && !reduce && !recorder && navigator.vibrate && navigator.userActivation?.hasBeenActive !== false) { try { navigator.vibrate(BUZZ[ev]); } catch { /* refusé */ } } };
+
+  // ---------- Boucle ----------
+  const HOLD = 9; // l'image finale reste affichée, puis l'animation se ferme seule
+  let t = 0, last = 0, raf = 0, started = false, fired = 0, closed = false;
+  const ptr = { x: 0, y: 0, tx: 0, ty: 0 };
+  function restart() { t = reduce ? T_END : 0; fired = 0; while (fired < events.length && events[fired][0] < t) fired++; root.classList.remove('done'); if (audio && soundOn && !reduce) audio.drone(); }
+
+  function frame(now) {
+    raf = requestAnimationFrame(frame);
+    const dt = Math.min(0.05, (now - (last || now)) / 1000); last = now;
+    t += dt;
+    while (fired < events.length && events[fired][0] <= t) { const ev = events[fired++][1]; if (audio && soundOn) audio[ev]?.(); buzz(ev); }
+    if (t >= T_END && !root.classList.contains('done')) root.classList.add('done');
+    if (t >= T_END + HOLD && !recorder) { close(); return; }
+    ptr.x += (ptr.tx - ptr.x) * 0.05; ptr.y += (ptr.ty - ptr.y) * 0.05;
+    // Caméra : secousse à chaque impact, léger balancement à la fin
+    let shake = 0;
+    if (!reduce) for (const [at, amp] of impacts) if (t >= at) shake += Math.exp(-(t - at) * 7) * amp;
+    const sway = seg(t, T_END - 0.5, 2);
+    camera.position.x = Math.sin(t * 47) * shake + (Math.sin(t * 0.32) * 0.35 + ptr.x * 0.5) * sway;
+    camera.position.y = Math.cos(t * 41) * shake + (Math.sin(t * 0.27) * 0.18 - ptr.y * 0.3) * sway;
+    camera.lookAt(0, 0, 0);
+    show.frame(t, dt);
+    renderer.render(scene, camera);
+    if (recorder) onRecordFrame();
+  }
+
+  // ---------- Vidéo ----------
+  let recorder = null;
+  const recBox = root.querySelector('.wel-rec');
+  function onRecordFrame() {
+    recBox.querySelector('b').textContent = `${Math.max(0, Math.ceil(T_END + 4 - t))} s`;
+    if (t > T_END + 4 && recorder.state === 'recording') recorder.stop();
+  }
+  async function record() {
+    if (recorder) return;
+    fixed = { w: 720, h: 1280 }; resize();
+    const stream = canvas.captureStream(30);
+    if (audio?.dest && soundOn) for (const tr of audio.dest.stream.getAudioTracks()) stream.addTrack(tr);
+    const chunks = [];
+    recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 4_000_000 });
+    recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+    recorder.onstop = async () => {
+      recorder = null; fixed = null; resize();
+      root.classList.remove('recording'); recBox.hidden = true;
+      stream.getVideoTracks().forEach((tr) => tr.stop());
+      if (closed) return;
+      const type = mime.split(';')[0];
+      const file = new File(chunks, `${fileName}.${type === 'video/mp4' ? 'mp4' : 'webm'}`, { type });
+      if (navigator.canShare?.({ files: [file] })) {
+        try { await navigator.share({ files: [file], title: shareTitle }); return; } catch (e) { if (e.name === 'AbortError') return; }
+      }
+      const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = file.name;
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
+    };
+    root.classList.add('recording'); recBox.hidden = false;
+    t = 0; fired = 0; root.classList.remove('done'); if (audio && soundOn) audio.drone();
+    recorder.start(250);
+  }
+
+  // ---------- Commandes ----------
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  const onMove = (e) => { ptr.tx = (e.clientX / innerWidth) * 2 - 1; ptr.ty = (e.clientY / innerHeight) * 2 - 1; };
+  const onVis = () => { if (document.hidden && !recorder) { cancelAnimationFrame(raf); raf = 0; } else if (!document.hidden && started && !raf) { last = 0; raf = requestAnimationFrame(frame); } };
+  document.addEventListener('keydown', onKey);
+  root.addEventListener('pointermove', onMove, { passive: true });
+  document.addEventListener('visibilitychange', onVis);
+  root.querySelector('[data-close]').onclick = () => close();
+  root.querySelector('[data-replay]').onclick = () => { if (!recorder) restart(); };
+  root.querySelector('[data-skip]').onclick = () => { if (!recorder) { t = Math.max(t, T_END); fired = events.length; audio?.stopDrone(); } };
+  root.querySelector('[data-video]')?.addEventListener('click', () => record());
+
+  show.ready.then(() => {
+    if (closed) return;
+    ({ T_END, events, impacts } = show.build());
+    events.sort((a, b) => a[0] - b[0]);
+    root.classList.add('ready');
+    started = true;
+    restart();
+    raf = requestAnimationFrame(frame);
+  });
+
+  function close() {
+    if (closed) return;
+    closed = true;
+    if (recorder?.state === 'recording') recorder.stop();
+    cancelAnimationFrame(raf);
+    document.removeEventListener('keydown', onKey); document.removeEventListener('visibilitychange', onVis);
+    ro.disconnect(); audio?.close();
+    root.classList.remove('on');
+    setTimeout(() => {
+      scene.traverse((o) => {
+        o.geometry?.dispose();
+        for (const m of [].concat(o.material || [])) { for (const v of Object.values(m)) if (v?.isTexture) v.dispose(); for (const un of Object.values(m.uniforms || {})) if (un.value?.isTexture) un.value.dispose(); m.dispose(); }
+      });
+      renderer.dispose(); root.remove();
+      if (!document.querySelector('.wel') && !document.getElementById('sheet-root').classList.contains('open')) document.body.classList.remove('locked');
+    }, 320);
+    onClose?.();
+  }
+  return close;
+}
+
+// ---------- Présentation d'un membre ----------
+// u : membre (avec u.card). Renvoie une fonction qui ferme la présentation.
+export function playWelcome(u, { onClose } = {}) {
+  return runShow({
+    label: `Présentation de ${u.pseudo}`, loading: 'Préparation de la présentation',
+    fileName: `bienvenue-${slug(u.pseudo)}`, shareTitle: `Bienvenue ${u.pseudo}`, onClose,
+    setup: (ctx) => welcomeScene(u, ctx),
+  });
+}
+
+function welcomeScene(u, { scene, camera, view, CAM_Z, reduce, load, text }) {
+  const card = u.card || {};
   // Décor : lune rouge, 影 géant, fumée, braises
   const behind = (z) => (CAM_Z - z) / CAM_Z; // agrandissement pour un objet en retrait
   const moon = new THREE.Mesh(new THREE.CircleGeometry(1, 96), new THREE.MeshBasicMaterial({ color: 0x9c121a, transparent: true }));
@@ -330,17 +478,14 @@ export function playWelcome(u, { onClose } = {}) {
   const slashC = new THREE.Mesh(new THREE.PlaneGeometry(1, 0.125), slashMat(slashT, 0.8));
   slashA.renderOrder = slashB.renderOrder = slashC.renderOrder = 3;
   scene.add(slashA, slashB, slashC);
-  const text = (tex, aspect) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(aspect, 1), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false })); m.renderOrder = 5; scene.add(m); return m; };
   let hello, kicker, title, info; // textes créés une fois les polices chargées
   const flash = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthTest: false, depthWrite: false }));
   flash.position.z = -1; flash.renderOrder = 10; camera.add(flash);
 
   const cards = {};
   let T_TITLE = 3, T_INFO = 4, T_END = 5;
-  let events = [];
+  const events = [];
 
-  const loader = new THREE.TextureLoader();
-  const load = (url) => loader.loadAsync(url).then((t) => { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy()); return t; });
   const sources = { ...card, photo: card.photo || u.avatar || null };
   const ready = Promise.all([
     document.fonts?.load(`700 120px ${FD}`).catch(() => {}),
@@ -368,59 +513,12 @@ export function playWelcome(u, { onClose } = {}) {
     }
     T_TITLE = t + 0.5; T_INFO = T_TITLE + 1; T_END = T_INFO + 1.2;
     events.push([0.25, 'whoosh'], [1.12, 'boom'], [T_TITLE - 0.25, 'whoosh'], [T_TITLE + 0.3, 'boom']);
-    events.sort((a, b) => a[0] - b[0]);
+    return { T_END, events, impacts: [[1.12, 0.16], ...Object.values(cards).map((c) => [c.a + 0.8, 0.06]), [T_TITLE + 0.3, 0.16]] };
   }
 
-  // Son : coupé par défaut tant que le navigateur ne l'autorise pas (il faut un toucher)
-  const audio = makeAudio();
-  let soundOn = false;
-  const soundBtn = root.querySelector('[data-sound]');
-  function setSound(on) {
-    soundOn = !!on && !!audio?.running;
-    audio?.setOn(soundOn);
-    soundBtn.setAttribute('aria-pressed', String(soundOn));
-    soundBtn.innerHTML = `${soundOn ? I.sound : I.mute}<span>Son</span>`;
-  }
-  if (!audio) soundBtn.hidden = true;
-  else if (localStorage.getItem('akt.wel.sound') !== '0') audio.ctx.resume().then(() => setSound(true)).catch(() => {});
-  soundBtn.onclick = async () => {
-    if (!audio) return;
-    await audio.ctx.resume().catch(() => {});
-    setSound(!soundOn);
-    localStorage.setItem('akt.wel.sound', soundOn ? '1' : '0');
-    if (soundOn && t < T_END) audio.drone();
-  };
-
-  // Vibration du téléphone avec les impacts (Android ; iPhone ne le permet pas aux sites)
-  const BUZZ = { boom: [70, 40, 40], hit: [28] };
-  const buzz = (ev) => { if (BUZZ[ev] && !reduce && !recorder && navigator.vibrate && navigator.userActivation?.hasBeenActive !== false) { try { navigator.vibrate(BUZZ[ev]); } catch { /* refusé */ } } };
-
-  // ---------- Boucle ----------
-  const HOLD = 9;
-  let t = 0, last = 0, raf = 0, started = false, fired = 0, closed = false;
-  const ptr = { x: 0, y: 0, tx: 0, ty: 0 };
-  const impacts = () => [1.12, ...Object.values(cards).map((c) => c.a + 0.8), T_TITLE + 0.3];
-  function restart() { t = reduce ? T_END : 0; fired = 0; while (fired < events.length && events[fired][0] < t) fired++; root.classList.remove('done'); if (audio && soundOn && !reduce) audio.drone(); }
-
-  function frame(now) {
-    raf = requestAnimationFrame(frame);
-    const dt = Math.min(0.05, (now - (last || now)) / 1000); last = now;
-    t += dt;
-    while (fired < events.length && events[fired][0] <= t) { const ev = events[fired++][1]; if (audio && soundOn) audio[ev]?.(); buzz(ev); }
-    if (t >= T_END && !root.classList.contains('done')) { root.classList.add('done'); }
-    // L'affiche complète reste affichée quelques secondes, puis la présentation se ferme seule
-    if (t >= T_END + HOLD && !recorder) { close(); return; }
+  function frame(t, dt) {
+    const lay = layout(view.W, view.H);
     const { W, H } = lay;
-    ptr.x += (ptr.tx - ptr.x) * 0.05; ptr.y += (ptr.ty - ptr.y) * 0.05;
-
-    // Caméra : secousse à chaque impact, léger balancement à la fin
-    let shake = 0;
-    if (!reduce) for (const at of impacts()) if (t >= at) shake += Math.exp(-(t - at) * 7) * (at === 1.12 || at > T_TITLE ? 0.16 : 0.06);
-    const sway = seg(t, T_END - 0.5, 2);
-    camera.position.x = Math.sin(t * 47) * shake + (Math.sin(t * 0.32) * 0.35 + ptr.x * 0.5) * sway;
-    camera.position.y = Math.cos(t * 41) * shake + (Math.sin(t * 0.27) * 0.18 - ptr.y * 0.3) * sway;
-    camera.lookAt(0, 0, 0);
-
     // Décor
     const bg = E.out(seg(t, 0, 1.6));
     const kM = behind(moon.position.z);
@@ -515,82 +613,9 @@ export function playWelcome(u, { onClose } = {}) {
     info.scale.setScalar(lay.info.w / (1600 / 200));
     info.position.set(lay.info.x, lay.info.y - (1 - E.out(seg(t, T_INFO, 0.6))) * 0.03 * H, 0.8);
     info.material.opacity = seg(t, T_INFO, 0.6);
-
-    renderer.render(scene, camera);
-    if (recorder) onRecordFrame();
   }
 
-  // ---------- Vidéo ----------
-  let recorder = null;
-  const recBox = root.querySelector('.wel-rec');
-  function onRecordFrame() {
-    recBox.querySelector('b').textContent = `${Math.max(0, Math.ceil(T_END + 4 - t))} s`;
-    if (t > T_END + 4 && recorder.state === 'recording') recorder.stop();
-  }
-  async function record() {
-    if (recorder) return;
-    fixed = { w: 720, h: 1280 }; resize();
-    const stream = canvas.captureStream(30);
-    if (audio?.dest && soundOn) for (const tr of audio.dest.stream.getAudioTracks()) stream.addTrack(tr);
-    const chunks = [];
-    recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 4_000_000 });
-    recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
-    recorder.onstop = async () => {
-      recorder = null; fixed = null; resize();
-      root.classList.remove('recording'); recBox.hidden = true;
-      stream.getVideoTracks().forEach((tr) => tr.stop());
-      if (closed) return;
-      const type = mime.split(';')[0];
-      const file = new File(chunks, `bienvenue-${slug(u.pseudo)}.${type === 'video/mp4' ? 'mp4' : 'webm'}`, { type });
-      if (navigator.canShare?.({ files: [file] })) {
-        try { await navigator.share({ files: [file], title: `Bienvenue ${u.pseudo}` }); return; } catch (e) { if (e.name === 'AbortError') return; }
-      }
-      const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = file.name;
-      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
-    };
-    root.classList.add('recording'); recBox.hidden = false;
-    t = 0; fired = 0; root.classList.remove('done'); if (audio && soundOn) audio.drone();
-    recorder.start(250);
-  }
-
-  // ---------- Commandes ----------
-  const onKey = (e) => { if (e.key === 'Escape') close(); };
-  const onMove = (e) => { ptr.tx = (e.clientX / innerWidth) * 2 - 1; ptr.ty = (e.clientY / innerHeight) * 2 - 1; };
-  const onVis = () => { if (document.hidden && !recorder) { cancelAnimationFrame(raf); raf = 0; } else if (!document.hidden && started && !raf) { last = 0; raf = requestAnimationFrame(frame); } };
-  document.addEventListener('keydown', onKey);
-  root.addEventListener('pointermove', onMove, { passive: true });
-  document.addEventListener('visibilitychange', onVis);
-  root.querySelector('[data-close]').onclick = () => close();
-  root.querySelector('[data-replay]').onclick = () => { if (!recorder) restart(); };
-  root.querySelector('[data-skip]').onclick = () => { if (!recorder) { t = Math.max(t, T_END); fired = events.length; audio?.stopDrone(); } };
-  root.querySelector('[data-video]')?.addEventListener('click', () => record());
-
-  ready.then(() => {
-    if (closed) return;
-    build();
-    root.classList.add('ready');
-    started = true;
-    restart();
-    raf = requestAnimationFrame(frame);
-  });
-
-  function close() {
-    if (closed) return;
-    closed = true;
-    if (recorder?.state === 'recording') recorder.stop();
-    cancelAnimationFrame(raf);
-    document.removeEventListener('keydown', onKey); document.removeEventListener('visibilitychange', onVis);
-    ro.disconnect(); audio?.close();
-    root.classList.remove('on');
-    setTimeout(() => {
-      scene.traverse((o) => {
-        o.geometry?.dispose();
-        for (const m of [].concat(o.material || [])) { for (const v of Object.values(m)) if (v?.isTexture) v.dispose(); for (const un of Object.values(m.uniforms || {})) if (un.value?.isTexture) un.value.dispose(); m.dispose(); }
-      });
-      renderer.dispose(); root.remove();
-      if (!document.querySelector('.wel') && !document.getElementById('sheet-root').classList.contains('open')) document.body.classList.remove('locked');
-    }, 320);
-    onClose?.();
-  }
-  return close;
+  return { ready, build, frame };
 }
+
+export { RED, WHITE, MUTED, FD, FB, E, seg, lerp, fit, slug, VERT, canvasTex, lineTex, titleTex, dotTex, makeCard };

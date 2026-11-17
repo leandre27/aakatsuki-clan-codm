@@ -15,7 +15,7 @@ const routes = [
   ['rejoindre', pub.register], ['connexion', pub.login], ['reglement', mem.rulebook], ['annonces', mem.announcements],
   ['base', mem.dashboard, 'member'], ['profil', mem.profile, 'member'], ['joueur/:id', mem.profile, 'member'],
   ['tournois', mem.tournaments, 'member'], ['defis', duels.challenges, 'member'], ['tournoi/:id', mem.tournament, 'member'],
-  ['bienvenue/:id', wel.poster, 'member'], ['presentation', wel.editor, 'member'], ['presentation/:id', wel.editor, 'staff'],
+  ['bienvenue/:id', wel.poster, 'member'], ['mvp', wel.mvpHall, 'member'], ['mvp/:id', wel.mvpHall, 'member'], ['presentation', wel.editor, 'member'], ['presentation/:id', wel.editor, 'staff'],
   ['notifications', mem.notifications, 'auth'], ['moi', mem.menu, 'auth'], ['mot-de-passe', mem.firstPassword, 'auth'],
   ['admin', adm.overview, 'staff'], ['admin/membres', adm.members, 'staff'], ['admin/points', adm.points, 'staff'],
   ['admin/tournois', adm.tournaments, 'staff'], ['admin/recompenses', adm.rewards, 'staff'], ['admin/annonces', adm.announcements, 'staff'],
@@ -93,7 +93,7 @@ function chrome(path) {
   const tabs = member
     ? [['#/base', I.home, 'Base'], ['#/classement', I.rank, 'Classement'], ['#/tournois', I.cup, 'Tournois'], ['#/recompenses', I.gift, 'Butin'], ['#/moi', I.user, 'Moi']]
     : [['#/', I.home, 'Accueil'], ['#/classement', I.rank, 'Classement'], ['#/calendrier', I.cal, 'Calendrier'], ['#/recompenses', I.gift, 'Récompenses'], [u ? '#/moi' : '#/rejoindre', I.user, u ? 'Moi' : 'Rejoindre']];
-  const active = (h) => on(h) || (h === '#/moi' && ['profil', 'notifications', 'reglement', 'clan', 'annonces', 'presentation'].includes(path.split('/')[0])) || (h === '#/moi' && path.startsWith('admin')) || (h === '#/tournois' && path === 'calendrier' && member);
+  const active = (h) => on(h) || (h === '#/moi' && ['profil', 'notifications', 'reglement', 'clan', 'annonces', 'presentation', 'mvp'].includes(path.split('/')[0])) || (h === '#/moi' && path.startsWith('admin')) || (h === '#/tournois' && path === 'calendrier' && member);
   document.getElementById('tabbar').innerHTML = tabs.map(([h, i, l]) => `<a href="${h}" class="${active(h) ? 'on' : ''}" ${active(h) ? 'aria-current="page"' : ''}>${i}<span>${esc(l)}</span></a>`).join('');
 }
 
@@ -115,9 +115,13 @@ addEventListener('online', async () => { try { await api.load(); render({ keepSc
   render();
   syncPush();
   // Nouvelle présentation pas encore vue sur cet appareil : elle se joue une fois, par-dessus la page
-  const w = api.pendingWelcome();
+  // Une seule animation à l'ouverture : le joueur du mois d'abord, sinon un nouveau membre
   const page = location.hash.replace(/^#\/?/, '').split(/[/?]/)[0];
-  if (w && !['bienvenue', 'presentation', 'mot-de-passe'].includes(page) && !api.me()?.mustChangePassword) wel.openWelcome(w).catch((e) => console.warn(e));
+  if (!['bienvenue', 'presentation', 'mot-de-passe', 'mvp'].includes(page) && !api.me()?.mustChangePassword) {
+    const mvp = api.pendingMvp(), w = mvp ? null : api.pendingWelcome();
+    if (mvp) wel.openMvp(mvp).catch((e) => console.warn(e));
+    else if (w) wel.openWelcome(w).catch((e) => console.warn(e));
+  }
   // Toucher une notification quand l'appli est déjà ouverte
   navigator.serviceWorker?.addEventListener('message', (e) => { if (e.data?.type === 'open' && typeof e.data.url === 'string' && e.data.url.startsWith('#/')) location.hash = e.data.url; });
   // Rafraîchit l'état (notifications, classement) quand l'appli revient au premier plan

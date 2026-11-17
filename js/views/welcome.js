@@ -151,3 +151,56 @@ export function recentStrip() {
       <b>${esc(u.pseudo)}</b></a>`).join('')}</div>
   </section>`;
 }
+
+// ---------- Joueur du mois ----------
+const mvpStatsOf = (d) => d.stats || { points: 0, rank: api.rankOf(d.userId, 'season'), grade: api.grade(api.stats()[d.userId]?.permanent || 0).name };
+export async function openMvp(d, { onClose } = {}) {
+  const u = api.user(d.userId); if (!u) return null;
+  api.markMvpSeen(d);
+  const { playMvp } = await import('../mvp3d.js');
+  return playMvp(u, { ...d, stats: mvpStatsOf(d) }, { onClose });
+}
+const face = (u) => (u.card?.photo || u.avatar || u.card?.character ? `<img src="${esc(u.card?.photo || u.avatar || u.card?.character)}" alt="">` : avatar(u, 'xl'));
+
+export function mvpHall({ params }) {
+  const list = api.mvps();
+  const cur = params.id ? list.find((d) => d.id === params.id) : list[0];
+  if (!cur) return { html: `<div class="wrap page">${head('Joueurs du mois', 'Le meilleur joueur de chaque mois, choisi par l’encadrement.')}${empty('Pas encore de joueur du mois. Le premier sera désigné à la fin du mois.')}</div>` };
+  const u = api.user(cur.userId);
+  const s = mvpStatsOf(cur);
+  const html = `<div class="wrap page">
+    ${head('Joueurs du mois', 'Le meilleur joueur de chaque mois, choisi par l’encadrement.')}
+    <article class="mvp-hero">
+      <div class="mvp-face">${face(u)}</div>
+      <div class="mvp-txt">
+        <p class="mvp-kick">Joueur du mois · ${esc(cur.period)}</p>
+        <h2>${esc(u.pseudo)}</h2>
+        <dl class="mvp-stats"><div><dt>Points du mois</dt><dd>${Number(s.points || 0).toLocaleString('fr-FR')}</dd></div><div><dt>Classement</dt><dd>${s.rank ? `#${s.rank}` : '–'}</dd></div><div><dt>Grade</dt><dd>${esc(s.grade || '–')}</dd></div></dl>
+        <div class="row"><button class="btn" id="play">${I.play} Lancer l’animation</button><a class="btn btn-line" href="#/joueur/${u.id}">Voir le profil</a></div>
+      </div>
+    </article>
+    ${list.length > 1 ? `<section class="sec"><div class="sec-head"><h2>Tableau d’honneur</h2></div>
+      <ul class="mvp-list">${list.map((d) => { const p = api.user(d.userId); return `<li class="${d.id === cur.id ? 'on' : ''}"><a href="#/mvp/${d.id}"><span class="mvp-mini">${face(p)}</span><div><b>${esc(p.pseudo)}</b><small>${esc(d.period)}</small></div>${I.play}</a></li>`; }).join('')}</ul></section>` : ''}
+  </div>`;
+  return {
+    html,
+    mount(root) {
+      let close = null;
+      root.querySelector('#play').onclick = act(async () => { close = await openMvp(cur); });
+      // Ouverte depuis la notification : l'animation se lance seule, une fois par session
+      if (params.id && sessionStorage.getItem('akt.mvp.auto') !== cur.id) {
+        sessionStorage.setItem('akt.mvp.auto', cur.id);
+        openMvp(cur).then((f) => (close = f)).catch((e) => console.warn(e));
+      }
+      return () => close?.();
+    },
+  };
+}
+
+// Bandeau du tableau de bord pendant le mois qui suit l'attribution
+export function mvpBanner() {
+  const d = api.mvps()[0];
+  if (!d || Date.now() - new Date(d.at).getTime() > 31 * 864e5) return '';
+  const u = api.user(d.userId);
+  return `<a class="mvp-banner" href="#/mvp/${d.id}"><span class="mvp-mini">${face(u)}</span><div><small>Joueur du mois · ${esc(d.period)}</small><b>${esc(u.pseudo)}</b></div><span class="mvp-play">${I.play}</span></a>`;
+}

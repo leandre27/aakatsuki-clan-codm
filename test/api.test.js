@@ -380,6 +380,17 @@ test('défi 1v1 : accepté, annoncé au clan, vainqueur confirmé par l’advers
   assert.equal((await anon.req('/api/state')).body.state.data.challenges.length, 0, 'défis réservés aux membres');
 });
 
+test('joueur du mois : statistiques gardées, tout le clan invité à voir l’animation', async () => {
+  const ms = (await member.req('/api/state')).body.state;
+  assert.equal((await member.rpc('awardDistinction', { userId: ms.me, title: 'MVP du mois', period: 'novembre 2026' })).status, 400, 'réservé à l’encadrement');
+  assert.equal((await admin.rpc('awardDistinction', { userId: ms.me, title: 'MVP du mois', period: 'novembre 2026' })).status, 200);
+  const st = (await member.req('/api/state')).body.state.data;
+  const d = st.distinctions.find((x) => x.title === 'MVP du mois' && x.userId === ms.me && x.period === 'novembre 2026');
+  assert.ok(d.stats && typeof d.stats.points === 'number' && d.stats.grade, 'statistiques du mois enregistrées');
+  assert.ok(st.notifications.some((n) => n.link === `#/mvp/${d.id}`), 'le joueur est prévenu');
+  assert.ok((await admin.req('/api/state')).body.state.data.notifications.some((n) => n.link === `#/mvp/${d.id}` && n.text.includes('joueur du mois')), 'le clan est prévenu');
+});
+
 test('déconnexion : ce téléphone ne reçoit plus les notifications du compte', async () => {
   const c = new Client();
   await c.login('membre@akatsuki.test', 'Membre2026!');

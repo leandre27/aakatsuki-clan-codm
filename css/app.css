@@ -885,3 +885,32 @@ fieldset:not([hidden]) { animation: pageIn .3s var(--ease) both; }
 .pick:has(input:disabled) { opacity: .45; cursor: not-allowed; }
 .prof-card .pill { margin-left: auto; }
 .tb-links a { white-space: nowrap; }
+
+/* ---------- Joueur du mois ---------- */
+:root { --gold: #f0c35a; --gold-d: #8a6a1c; --gold-bg: #2a2110; }
+.mvp-hero { display: grid; gap: var(--s-5); margin-top: var(--s-4); padding: var(--s-5); background: #0d0c0a; border: 1px solid var(--gold-d); border-top: 4px solid var(--gold); border-radius: var(--r); }
+.mvp-face { width: min(220px, 60vw); aspect-ratio: 1; justify-self: center; border-radius: 50%; overflow: hidden; box-shadow: 0 0 0 6px var(--gold), 0 0 0 9px var(--gold-d); display: grid; place-items: center; background: var(--s2); }
+.mvp-face img { width: 100%; height: 100%; object-fit: cover; }
+.mvp-face .av { width: 100%; height: 100%; font-size: 64px; border-radius: 0; }
+.mvp-kick { color: var(--gold); font: 600 13px var(--fd); text-transform: uppercase; letter-spacing: .14em; }
+.mvp-txt h2 { font-size: clamp(30px, 8vw, 52px); font-style: italic; text-transform: uppercase; margin: var(--s-2) 0 var(--s-4); }
+.mvp-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; margin: 0 0 var(--s-5); }
+.mvp-stats div { background: var(--s1); border-top: 3px solid var(--gold); padding: var(--s-3); }
+.mvp-stats dt { color: var(--mu); font: 600 11px var(--fd); text-transform: uppercase; letter-spacing: .06em; }
+.mvp-stats dd { margin: 4px 0 0; font: 700 22px var(--fd); }
+@media (min-width: 720px) { .mvp-hero { grid-template-columns: auto 1fr; align-items: center; } }
+.mvp-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.mvp-list a { display: grid; grid-template-columns: 48px 1fr 22px; gap: var(--s-3); align-items: center; padding: var(--s-3); background: var(--s1); }
+.mvp-list li.on a { box-shadow: inset 3px 0 0 var(--gold); }
+.mvp-list b { display: block; }
+.mvp-list small { color: var(--mu); text-transform: capitalize; }
+.mvp-list .ic { color: var(--gold); }
+.mvp-mini { width: 48px; height: 48px; border-radius: 50%; overflow: hidden; box-shadow: 0 0 0 2px var(--gold); display: grid; place-items: center; background: var(--s2); flex: none; }
+.mvp-mini img { width: 100%; height: 100%; object-fit: cover; }
+.mvp-mini .av { width: 100%; height: 100%; border-radius: 0; }
+.mvp-banner { display: grid; grid-template-columns: 48px 1fr 40px; gap: var(--s-4); align-items: center; margin-top: var(--s-4); padding: var(--s-3) var(--s-4); background: var(--gold-bg); border: 1px solid var(--gold-d); border-radius: var(--r); }
+.mvp-banner small { display: block; color: var(--gold); font: 600 11px var(--fd); text-transform: uppercase; letter-spacing: .1em; }
+.mvp-banner b { font: 700 18px var(--fd); text-transform: uppercase; }
+.mvp-play { width: 40px; height: 40px; display: grid; place-items: center; background: var(--gold); color: var(--ink); border-radius: 50%; }
+.mvp-play .ic { width: 18px; height: 18px; }
+.medals li > a { display: flex; align-items: center; gap: var(--s-3); width: 100%; }

@@ -4,13 +4,13 @@
 // - Images, Three.js et polices : copie locale d'abord (fichiers qui ne changent pas).
 // - État du clan (/api/state) : réseau d'abord, dernier état connu si hors ligne.
 //   Effacé à la déconnexion. Les écritures (POST) ne passent jamais par le cache.
-const VERSION = 'akt-v5';
+const VERSION = 'akt-v6';
 const SHELL = `${VERSION}-shell`;
 const STATIC = `${VERSION}-static`;
 const DATA = `${VERSION}-data`;
 const PRECACHE = [
   '/', '/index.html', '/css/app.css', '/manifest.webmanifest',
-  '/js/main.js', '/js/api.js', '/js/pwa.js', '/js/core.js', '/js/ui.js', '/js/icons.js', '/js/scene3d.js', '/js/welcome3d.js',
+  '/js/main.js', '/js/api.js', '/js/pwa.js', '/js/core.js', '/js/ui.js', '/js/icons.js', '/js/scene3d.js', '/js/welcome3d.js', '/js/mvp3d.js',
   '/js/views/public.js', '/js/views/member.js', '/js/views/admin.js', '/js/views/welcome.js', '/js/views/challenges.js',
   '/assets/logo-solid.webp', '/assets/logo-256.webp', '/assets/logo-mask.webp', '/assets/icon-192.png', '/assets/badge-96.png',
 ];

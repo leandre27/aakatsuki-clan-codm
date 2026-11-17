@@ -813,6 +813,14 @@ export function toggleReward(id) {
 export const myRequests = (userId) => D().requests.filter((q) => q.userId === userId).sort((a, b) => b.at.localeCompare(a.at));
 
 // Proposition automatique : meilleur joueur du mois précédent
+// Statistiques gardées avec la distinction « MVP du mois » pour son animation
+function mvpStats(userId, points) {
+  const s = stats()[userId] || {};
+  return { points: points ?? (s.prevMonth > 0 ? s.prevMonth : s.month || 0), rank: rankOf(userId, 'season'), grade: grade(s.permanent || 0).name };
+}
+export const MVP = 'MVP du mois';
+// Joueurs du mois, du plus récent au plus ancien
+export function mvps() { return D().distinctions.filter((x) => x.title === MVP && user(x.userId)).sort((a, b) => b.at.localeCompare(a.at)); }
 export function monthlyProposal() {
   const top = ranking('prevMonth')[0];
   if (!top || top.value <= 0) return null;
@@ -824,11 +832,12 @@ export function monthlyProposal() {
 export function acceptProposal() {
   if (!can('rewards.manage') && !can('members.manage')) fail('Action non autorisée pour ton rôle.');
   const p = monthlyProposal(); if (!p) fail('Aucune proposition en cours.');
-  D().distinctions.push({ id: uid('d'), userId: p.user.id, title: 'MVP du mois', period: p.period, at: nowISO(), by: me().id });
+  const dist = { id: uid('d'), userId: p.user.id, title: MVP, period: p.period, at: nowISO(), by: me().id, stats: mvpStats(p.user.id, p.points) };
+  D().distinctions.push(dist);
   const bp = D().rewards.find((r) => r.category === 'bp');
   if (bp) D().requests.push({ id: uid('rq'), userId: p.user.id, rewardId: bp.id, cost: 0, auto: true, status: 'accepted', reason: '', at: nowISO(), history: [{ status: 'accepted', at: nowISO(), by: me().id, note: `MVP de ${p.period}` }] });
-  notify(p.user.id, `Tu es MVP de ${p.period}. Ta passe de combat sera remise par un responsable.`, '#/profil');
-  notifyAll(`${p.user.pseudo} est le MVP de ${p.period}. Bravo à lui.`, `#/joueur/${p.user.id}`, (u) => u.id !== p.user.id);
+  notify(p.user.id, `Tu es le joueur du mois de ${p.period}. Ta passe de combat sera remise par un responsable.`, `#/mvp/${dist.id}`);
+  notifyAll(`${p.user.pseudo} est le joueur du mois de ${p.period}. Découvre son animation.`, `#/mvp/${dist.id}`, (u) => u.id !== p.user.id);
   audit('Proposition MVP validée', p.user.pseudo, `${p.period} · ${p.points} pts · passe de combat à remettre`);
   commit();
 }
@@ -837,9 +846,12 @@ export function awardDistinction({ userId, title, period }) {
   if (!can('members.manage') && !can('rewards.manage')) fail('Action non autorisée pour ton rôle.');
   if (!user(userId)) fail('Membre introuvable.');
   if (!title?.trim() || !period?.trim()) fail('Distinction et période obligatoires.');
-  D().distinctions.push({ id: uid('d'), userId, title: title.trim(), period: period.trim(), at: nowISO(), by: me().id });
-  notify(userId, `Nouvelle distinction : ${title} (${period}).`, '#/profil');
-  notifyAll(`${user(userId).pseudo} reçoit la distinction ${title.trim()} (${period.trim()}).`, `#/joueur/${userId}`, (u) => u.id !== userId);
+  const dist = { id: uid('d'), userId, title: title.trim(), period: period.trim(), at: nowISO(), by: me().id };
+  const mvp = dist.title === MVP;
+  if (mvp) dist.stats = mvpStats(userId);
+  D().distinctions.push(dist);
+  notify(userId, mvp ? `Tu es le joueur du mois de ${dist.period}.` : `Nouvelle distinction : ${title} (${period}).`, mvp ? `#/mvp/${dist.id}` : '#/profil');
+  notifyAll(mvp ? `${user(userId).pseudo} est le joueur du mois de ${dist.period}. Découvre son animation.` : `${user(userId).pseudo} reçoit la distinction ${title.trim()} (${period.trim()}).`, mvp ? `#/mvp/${dist.id}` : `#/joueur/${userId}`, (u) => u.id !== userId);
   audit('Distinction attribuée', user(userId).pseudo, `${title} · ${period}`);
   commit();
 }

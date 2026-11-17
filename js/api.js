@@ -38,6 +38,15 @@ export function pendingWelcome() {
   const seen = welSeen();
   return core.recentCards(10).find((x) => x.id !== u.id && !seen.includes(welTag(x))) || null;
 }
+// Joueur du mois : son animation se joue une fois à l'ouverture (20 jours après l'attribution)
+export function pendingMvp() {
+  const u = core.me();
+  if (!u || !['active', 'suspended', 'inactive'].includes(u.status)) return null;
+  const d = core.mvps()[0];
+  if (!d || Date.now() - new Date(d.at).getTime() > 20 * 864e5) return null;
+  return welSeen().includes(`mvp:${d.id}`) ? null : d;
+}
+export function markMvpSeen(d) { localStorage.setItem(welKey(), JSON.stringify([...welSeen(), `mvp:${d.id}`].slice(-60))); }
 export function markWelcomeSeen(u) {
   if (!u?.card?.publishedAt) return;
   const seen = welSeen().filter((t) => !t.startsWith(`${u.id}:`));

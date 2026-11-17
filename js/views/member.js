@@ -3,7 +3,7 @@ import { I, cloud, logo } from '../icons.js';
 import { esc, nf, signed, fmtDT, fmtDate, fmtDay, fmtTime, ago, avatar, toast, act, sheet, ask, formObj, head, empty, gradeTag, gradeProgress, statusPill, tStatusPill, rStatusPill, tCard, rewardTile, txRow, countUp, tilt, podium, toLocalInput } from '../ui.js';
 import { resizeImage } from './public.js';
 import { installCard, bindInstall, installMenuItem, mountPushPanel, syncPush } from '../pwa.js';
-import { recentStrip } from './welcome.js';
+import { recentStrip, mvpBanner } from './welcome.js';
 
 // ---------- Première connexion : choisir son mot de passe ----------
 export function firstPassword() {
@@ -146,6 +146,7 @@ export function dashboard({ rerender }) {
       ${idCard(u, S, rank)}
     </div>
 
+    ${mvpBanner()}
     ${installCard()}
     ${api.challengeTodo() ? `<a class="panel card-cta" href="#/defis">${I.target}<div><b>Défis 1v1 : ${api.challengeTodo()} à traiter</b><small>Un défi attend ta réponse ou ton résultat.</small></div>${I.right}</a>` : ''}
     ${!u.card?.publishedAt ? `<a class="panel card-cta" href="#/presentation">${I.film}<div><b>Crée ta carte de présentation</b><small>Ta photo, ton personnage, ton profil et ton arme, joués en animation 3D pour tout le clan.</small></div>${I.right}</a>` : ''}
@@ -239,7 +240,7 @@ export function profile({ params, query, rerender }) {
     body = h.length ? `<ul class="txs">${h.map((t) => txRow(t, { correct: api.can('points.manage') && !own })).join('')}</ul>` : empty('Aucune opération.');
   } else if (tab === 'recompenses') {
     const reqs = api.myRequests(u.id).filter((q) => ['accepted', 'delivered'].includes(q.status));
-    body = `<section class="sec"><div class="sec-head"><h2>Distinctions</h2></div>${dist.length ? `<ul class="medals">${dist.map((d) => `<li>${cloud('medal-cloud', 8)}<div><b>${esc(d.title)}</b><small>${esc(d.period)}</small></div></li>`).join('')}</ul>` : empty('Pas encore de distinction.')}</section>
+    body = `<section class="sec"><div class="sec-head"><h2>Distinctions</h2></div>${dist.length ? `<ul class="medals">${dist.map((d) => d.title === api.MVP ? `<li><a href="#/mvp/${d.id}">${cloud('medal-cloud', 8)}<div><b>Joueur du mois</b><small>${esc(d.period)} · voir l’animation</small></div></a></li>` : `<li>${cloud('medal-cloud', 8)}<div><b>${esc(d.title)}</b><small>${esc(d.period)}</small></div></li>`).join('')}</ul>` : empty('Pas encore de distinction.')}</section>
       <section class="sec"><div class="sec-head"><h2>Récompenses obtenues</h2></div>${reqs.length ? `<ul class="list">${reqs.map((q) => `<li><div><b>${esc(api.reward(q.rewardId)?.name)}</b><small>${fmtDT(q.at)}${q.auto ? ' · attribution' : ` · ${nf(q.cost)} pts`}</small></div>${rStatusPill(q.status)}</li>`).join('')}</ul>` : empty('Aucune récompense obtenue.')}</section>`;
   } else if (tab === 'discipline') {
     const d = api.disciplineOf(u.id);
@@ -481,6 +482,7 @@ export function menu() {
     ['#/profil', I.user, 'Mon profil', 'Statistiques, grade, distinctions'],
     ['#/profil?tab=historique', I.log, 'Mes points', `${nf(S.balance)} pts de solde · historique complet`],
     ['#/presentation', I.film, 'Ma carte de présentation', u.card?.publishedAt ? 'Publiée · modifier ou revoir l’animation' : 'À créer · le clan te découvre en animation 3D'],
+    ['#/mvp', I.cup, 'Joueurs du mois', api.mvps()[0] ? `${api.user(api.mvps()[0].userId)?.pseudo} · ${api.mvps()[0].period}` : 'Tableau d’honneur du clan'],
     ['#/defis', I.target, 'Défis 1v1', api.challengeTodo() ? `${api.challengeTodo()} à traiter` : 'Défie un membre du clan'],
     ['#/annonces', I.mega, 'Annonces', api.annUnread() ? `${api.annUnread()} nouvelle${api.annUnread() > 1 ? 's' : ''}` : 'Informations officielles du clan'],
     ['#/notifications', I.bell, 'Notifications', `${api.unreadCount()} non lues · réglage du téléphone`],
