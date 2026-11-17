@@ -42,8 +42,8 @@ export const R_STATUS = { pending: 'En attente', hold: 'Mise en attente', accept
 export const R_CATS = { bp: 'Passe de combat', cp: 'CP', gift: 'Cadeau', rare: 'Exceptionnelle', special: 'Spéciale' };
 export const SPECIALTIES = ['Sniper', 'AR', 'SMG', 'Shotgun', 'Autre'];
 export const MODES = { MJ: 'Multijoueur', BR: 'Battle Royale', 'MJ+BR': 'Les deux' };
-// Mode principal tel qu'affiché dans les présentations : « Main MJ », « Main BR », « Main BR et MJ »
-export const MAIN_MODE = { MJ: 'Main MJ', BR: 'Main BR', 'MJ+BR': 'Main BR et MJ' };
+// Mode principal tel qu'affiché dans les présentations : « Joueur MJ », « Joueur BR », « Joueur BR et MJ »
+export const MAIN_MODE = { MJ: 'Joueur MJ', BR: 'Joueur BR', 'MJ+BR': 'Joueur BR et MJ' };
 export const DISTINCTIONS = ['MVP du mois', 'Meilleur sniper', 'Meilleur joueur MJ', 'Meilleur joueur BR', 'Joueur le plus régulier', 'Meilleur coéquipier', 'Meilleure progression', 'Meilleur recruteur'];
 export const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
 
