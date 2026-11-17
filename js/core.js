@@ -268,7 +268,7 @@ export function approve(id) {
   must('members.manage');
   const u = user(id); if (!u || u.status !== 'pending') fail('Demande introuvable.');
   u.status = 'active'; u.joinedAt = nowISO();
-  notify(id, 'Bienvenue dans 影 AaKATSUKI 影 : ton inscription est validée.', '#/base');
+  notify(id, 'Bienvenue dans 影 AaKATSUKI 影 : ton inscription est validée. Crée ta carte de présentation pour que le clan te découvre.', '#/presentation');
   audit('Inscription validée', u.pseudo, 'En attente → Actif');
   notifyAll(`Nouveau membre : ${u.pseudo} rejoint 影 AaKATSUKI 影. Souhaitez-lui la bienvenue.`, `#/joueur/${u.id}`, (x) => x.id !== u.id);
   commit();
@@ -334,6 +334,46 @@ export function updateUser(id, f) {
   for (const k of allowed) if (f[k] !== undefined && f[k] !== u[k]) { changes.push(k); u[k] = typeof f[k] === 'string' && k !== 'avatar' ? f[k].trim() : f[k]; }
   if (changes.length && !self) audit('Profil modifié', u.pseudo, `Champs : ${changes.join(', ')}`);
   commit();
+}
+
+// ---------- Carte de présentation ----------
+// Quatre images comme les affiches du clan, jouées en animation 3D pour tout le clan.
+export const CARD_SLOTS = {
+  photo: { label: 'Ta photo', hint: 'Une photo de toi, visage bien visible.' },
+  character: { label: 'Personnage favori', hint: 'Ton opérateur préféré dans le jeu.' },
+  profile: { label: 'Profil CODM', hint: 'La capture d’écran de ton profil de joueur.' },
+  weapon: { label: 'Arme favorite', hint: 'Ton arme préférée, de préférence sur fond uni.' },
+};
+export const CARD_SLOTS_KEYS = Object.keys(CARD_SLOTS);
+const MEDIA_RE = /^\/media\/[a-f0-9]{32}\.(webp|jpg|png)$/;
+export function saveCard(id, f) {
+  const self = me()?.id === id;
+  const staff = can('members.manage');
+  if (!self && !staff) fail('Action non autorisée pour ton rôle.');
+  const u = user(id); if (!u || !CLAN.includes(u.status)) fail('Membre introuvable.');
+  const card = { ...(u.card || {}) };
+  for (const k of CARD_SLOTS_KEYS) {
+    if (f[k] === undefined) continue;
+    if (f[k] !== null && f[k] !== '' && !(typeof f[k] === 'string' && MEDIA_RE.test(f[k]))) fail('Image invalide.');
+    card[k] = f[k] || null;
+  }
+  for (const [k, max] of [['characterName', 40], ['weaponName', 40], ['motto', 90]]) if (f[k] !== undefined) card[k] = str(f[k], max).trim();
+  if (!card.photo && !card.character) fail('Ajoute au moins ta photo ou ton personnage favori.');
+  const first = !card.publishedAt;
+  card.updatedAt = nowISO();
+  // Première publication, ou nouvelle diffusion demandée par un responsable : tout le clan est prévenu
+  const announce = first || (f.announce === true && staff);
+  if (announce) card.publishedAt = card.updatedAt;
+  u.card = card;
+  if (announce) notifyAll(`Présentation : découvre ${u.pseudo}, nouveau visage de 影 AaKATSUKI 影.`, `#/bienvenue/${u.id}`, (x) => x.id !== u.id);
+  if (!self || announce) audit(announce ? 'Carte de présentation publiée' : 'Carte de présentation modifiée', u.pseudo, announce ? 'Annoncée à tout le clan.' : '');
+  commit();
+  return { publishedAt: card.publishedAt };
+}
+// Présentations récentes (30 jours), les plus récentes d'abord
+export function recentCards(days = 30) {
+  const since = new Date(Date.now() - days * 864e5).toISOString();
+  return D().users.filter((u) => u.card?.publishedAt && u.card.publishedAt > since && CLAN.includes(u.status)).sort((a, b) => b.card.publishedAt.localeCompare(a.card.publishedAt));
 }
 
 // ---------- Activités ----------

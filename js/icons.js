@@ -32,6 +32,11 @@ export const I = {
   download: s('<path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 20h14"/>'),
   share: s('<path d="M12 3v12M8 7l4-4 4 4"/><path d="M6 11H5v10h14V11h-1"/>'),
   clock: s('<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>'),
+  play: s('<path d="M7 4v16l13-8L7 4Z"/>'),
+  sound: s('<path d="M3 9v6h4l6 5V4L7 9H3Z"/><path d="M16 9a4 4 0 0 1 0 6M19 6a8 8 0 0 1 0 12"/>'),
+  mute: s('<path d="M3 9v6h4l6 5V4L7 9H3Z"/><path d="m16 9 6 6M22 9l-6 6"/>'),
+  film: s('<path d="M3 5h18v14H3zM7 5v14M17 5v14M3 9h4M3 15h4M17 9h4M17 15h4"/>'),
+  image: s('<path d="M3 5h18v14H3z"/><circle cx="9" cy="10" r="2"/><path d="m3 17 6-5 4 3 3-2 5 4"/>'),
 };
 
 // Nuage du clan. Même tracé pour le logo SVG et la scène 3D.

@@ -215,6 +215,8 @@ Au démarrage puis toutes les 24 heures, le site écrit une sauvegarde dans `DAT
   et `pm2 start aakatsuki`. Sans `--oui`, la commande montre seulement ce que contient la sauvegarde.
 - **SQLite** : copie complète `akatsuki-….db`. Pour restaurer : arrêter le serveur, remplacer `akatsuki.db` par la copie, supprimer `akatsuki.db-wal` et `akatsuki.db-shm`, redémarrer.
 
+Les images des cartes de présentation sont dans `DATA_DIR/media/` (`~/aakatsuki/shared/data/media` sur le VPS) : elles ne sont pas dans l'export MySQL, garde ce dossier avec les sauvegardes. Les images envoyées mais jamais utilisées sont supprimées au bout d'un jour.
+
 Active aussi les sauvegardes de CloudPanel (Backups) vers un stockage externe : si le disque du VPS est perdu, les sauvegardes locales le sont aussi.
 
 ## Structure
@@ -225,6 +227,7 @@ js/core.js           règles métier partagées : permissions, points, classemen
 js/api.js            client : lit l'état envoyé par le serveur, envoie les écritures à l'API
 js/main.js, js/ui.js, js/views/   routeur, composants et pages
 js/scene3d.js        scène Three.js (blason en relief, nuages, lune, braises)
+js/welcome3d.js      présentation animée d'un membre (plein écran, son synthétisé, export vidéo)
 server/index.js      serveur HTTP : API, sessions, fichiers, en-têtes de sécurité, tâches planifiées
 server/db.js         accès à la base : MySQL / MariaDB (DATABASE_URL) ou SQLite
 server/store.js      une table par entité, écriture transactionnelle, sauvegardes

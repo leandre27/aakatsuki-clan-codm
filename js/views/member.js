@@ -3,6 +3,7 @@ import { I, cloud, logo } from '../icons.js';
 import { esc, nf, signed, fmtDT, fmtDate, fmtDay, fmtTime, ago, avatar, toast, act, sheet, ask, formObj, head, empty, gradeTag, gradeProgress, statusPill, tStatusPill, rStatusPill, tCard, rewardTile, txRow, countUp, tilt, podium, toLocalInput } from '../ui.js';
 import { resizeImage } from './public.js';
 import { installCard, bindInstall, installMenuItem, mountPushPanel, syncPush } from '../pwa.js';
+import { recentStrip } from './welcome.js';
 
 // ---------- Première connexion : choisir son mot de passe ----------
 export function firstPassword() {
@@ -146,6 +147,7 @@ export function dashboard({ rerender }) {
     </div>
 
     ${installCard()}
+    ${!u.card?.publishedAt ? `<a class="panel card-cta" href="#/presentation">${I.film}<div><b>Crée ta carte de présentation</b><small>Ta photo, ton personnage, ton profil et ton arme, joués en animation 3D pour tout le clan.</small></div>${I.right}</a>` : ''}
     <div data-push-card></div>
     <div class="kpis">
       <div class="kpi"><span>Solde</span><b data-count="${api.spendable(u.id)}">0</b><small>pts dépensables</small></div>
@@ -180,6 +182,7 @@ export function dashboard({ rerender }) {
         ${ann.length ? `<ul class="ann">${ann.map((a) => `<li class="${a.pinned ? 'pinned' : ''} ${api.isAnnNew(a) ? 'is-new' : ''}"><a class="ann-link" href="#/annonces?id=${esc(a.id)}"><div class="ann-meta">${api.isAnnNew(a) ? '<span class="ann-new">Nouveau</span>' : ''}${a.pinned ? '<span class="pill">Épinglée</span>' : ''}<span>${ago(a.at)} · ${esc(api.user(a.authorId)?.pseudo)}</span></div><h3>${esc(a.title)}</h3><p class="clamp">${esc(a.body)}</p></a></li>`).join('')}</ul>` : empty('Aucune annonce.')}
       </section>
 
+      ${recentStrip()}
       <section class="sec">
         <div class="sec-head"><h2>Dernières activités</h2><a class="link" href="#/profil?tab=historique">Historique ${I.right}</a></div>
         ${last.length ? `<ul class="txs">${last.map((t) => txRow(t)).join('')}</ul>` : empty('Pas encore de points. Viens au prochain entraînement.')}
@@ -252,6 +255,7 @@ export function profile({ params, query, rerender }) {
       </div>
       ${own ? `<button class="btn btn-line btn-sm" id="edit">${I.edit} Modifier</button>` : staff ? `<a class="btn btn-line btn-sm" href="#/admin/membres?open=${u.id}">${I.shield} Gérer</a>` : ''}
     </div>
+    ${u.card?.publishedAt ? `<a class="btn btn-sm prof-card" href="#/bienvenue/${u.id}">${I.play} Voir la présentation</a>` : own ? `<a class="btn btn-sm btn-line prof-card" href="#/presentation">${I.film} Créer ma carte de présentation</a>` : ''}
     ${dist.length ? `<div class="dist-strip">${dist.slice(0, 4).map((d) => `<span class="dist">${esc(d.title)} <small>${esc(d.period)}</small></span>`).join('')}</div>` : ''}
     <div class="chips" role="tablist">${tabs.map(([k, l]) => `<a class="chip ${k === tab ? 'on' : ''}" href="${base}?tab=${k}">${l}</a>`).join('')}</div>
     ${body}
@@ -470,6 +474,7 @@ export function menu() {
   const links = [
     ['#/profil', I.user, 'Mon profil', 'Statistiques, grade, distinctions'],
     ['#/profil?tab=historique', I.log, 'Mes points', `${nf(S.balance)} pts de solde · historique complet`],
+    ['#/presentation', I.film, 'Ma carte de présentation', u.card?.publishedAt ? 'Publiée · modifier ou revoir l’animation' : 'À créer · le clan te découvre en animation 3D'],
     ['#/annonces', I.mega, 'Annonces', api.annUnread() ? `${api.annUnread()} nouvelle${api.annUnread() > 1 ? 's' : ''}` : 'Informations officielles du clan'],
     ['#/notifications', I.bell, 'Notifications', `${api.unreadCount()} non lues · réglage du téléphone`],
     ['#/calendrier', I.cal, 'Calendrier', 'Séances et compétitions'],

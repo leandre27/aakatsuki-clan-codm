@@ -316,6 +316,45 @@ test('nouveau membre annoncé au clan, classement envoyé par un responsable seu
   assert.equal((await member.rpc('weeklyDigest', { force: true })).status, 400);
 });
 
+test('carte de présentation : images vérifiées, publiée au clan, visible des membres seulement', async () => {
+  // Plus petit PNG valide (1 × 1)
+  const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  assert.equal((await anon.req('/api/media', { data: png })).status, 401);
+  const notImage = await member.req('/api/media', { data: Buffer.from('<script>alert(1)</script>').toString('base64') });
+  assert.equal(notImage.status, 400, 'contenu qui n’est pas une image refusé');
+  const up = await member.req('/api/media', { data: png });
+  assert.equal(up.status, 200);
+  assert.match(up.body.url, /^\/media\/[a-f0-9]{32}\.png$/);
+  const img = await fetch(BASE + up.body.url);
+  assert.equal(img.status, 200);
+  assert.equal(img.headers.get('content-type'), 'image/png');
+  assert.match(img.headers.get('cache-control'), /immutable/);
+  assert.equal((await fetch(BASE + '/media/..%2Fakatsuki.db')).status, 404);
+
+  const me = (await member.req('/api/state')).body.state;
+  assert.equal((await member.rpc('saveCard', me.me, { photo: 'https://ailleurs.example/x.png' })).status, 400, 'image externe refusée');
+  assert.equal((await member.rpc('saveCard', me.me, { motto: 'Sans image' })).status, 400, 'photo ou personnage obligatoire');
+  const other = me.data.users.find((u) => u.id !== me.me && !u.roles.includes('superadmin'));
+  assert.equal((await member.rpc('saveCard', other.id, { photo: up.body.url })).status, 400, 'un membre ne modifie pas la carte d’un autre');
+
+  const ok = await member.rpc('saveCard', me.me, { photo: up.body.url, weapon: up.body.url, weaponName: 'DL Q33', motto: 'Dans l’ombre' });
+  assert.equal(ok.status, 200);
+  const mine = ok.body.state.data.users.find((u) => u.id === me.me);
+  assert.equal(mine.card.photo, up.body.url);
+  assert.ok(mine.card.publishedAt);
+  const adminState = (await admin.req('/api/state')).body.state;
+  const note = adminState.data.notifications.find((n) => n.link === `#/bienvenue/${me.me}`);
+  assert.ok(note, 'le clan est prévenu de la présentation');
+  assert.ok(!(await member.req('/api/state')).body.state.data.notifications.some((n) => n.link === `#/bienvenue/${me.me}`), 'pas de notification pour soi-même');
+  // Modifier ensuite ne renvoie pas de notification
+  const count = (await admin.req('/api/state')).body.state.data.notifications.length;
+  assert.equal((await member.rpc('saveCard', me.me, { motto: 'Toujours dans l’ombre' })).status, 200);
+  assert.equal((await admin.req('/api/state')).body.state.data.notifications.length, count);
+  // Le public ne voit pas les photos des membres
+  const pub = (await anon.req('/api/state')).body.state.data.users.find((u) => u.id === me.me);
+  assert.equal(pub.card, undefined);
+});
+
 test('déconnexion : ce téléphone ne reçoit plus les notifications du compte', async () => {
   const c = new Client();
   await c.login('membre@akatsuki.test', 'Membre2026!');

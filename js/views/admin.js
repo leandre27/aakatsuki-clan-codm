@@ -125,6 +125,7 @@ function memberSheet(id, rerender) {
       ${u.firstName || u.lastName ? `<div><dt>Nom</dt><dd>${esc(`${u.firstName} ${u.lastName}`)}</dd></div>` : ''}
     </dl>
     <a class="btn btn-line btn-block" href="#/joueur/${u.id}">Voir le profil complet</a>
+    ${api.can('members.manage') && ['active', 'suspended', 'inactive'].includes(u.status) ? `<a class="btn btn-line btn-block" href="${self ? '#/presentation' : `#/presentation/${u.id}`}">${I.film} Carte de présentation${u.card?.publishedAt ? '' : ' (à créer)'}</a>` : ''}
     ${manage && u.status !== 'pending' && (!api.isStaff(u) || api.isSuper()) ? `<button class="btn btn-ghost btn-block" id="pwreset">Réinitialiser son mot de passe</button>` : ''}
     ${manage && u.status === 'pending' ? `<div class="row"><button class="btn" data-ap="${u.id}">${I.check} Accepter</button><button class="btn btn-danger-line" data-rf="${u.id}">Refuser</button></div>` : ''}
     ${manage && u.status !== 'pending' ? `<div class="field"><span>Statut</span><div class="seg">${['active', 'suspended', 'inactive', 'excluded'].map((s) => `<label><input type="radio" name="st" value="${s}" ${u.status === s ? 'checked' : ''}><span>${api.STATUS[s]}</span></label>`).join('')}</div></div>` : ''}

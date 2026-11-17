@@ -12,7 +12,7 @@ export function snapshot(state, actor) {
   const pickUser = (u) => {
     const self = actor?.id === u.id;
     const o = { id: u.id, pseudo: u.pseudo, color: u.color, avatar: u.avatar, mode: u.mode, specialty: u.specialty, level: u.level, status: u.status, roles: u.roles, joinedAt: u.joinedAt };
-    if (memberish || self) o.availability = u.availability;
+    if (memberish || self) { o.availability = u.availability; if (u.card) o.card = u.card; }
     if (self) o.mustChangePassword = !!u.mustChangePassword;
     if (self || seeMembers) Object.assign(o, { login: u.login, email: u.email, uid: u.uid, firstName: u.firstName, lastName: u.lastName, createdAt: u.createdAt });
     return o;

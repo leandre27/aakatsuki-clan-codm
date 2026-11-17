@@ -765,3 +765,81 @@ fieldset:not([hidden]) { animation: pageIn .3s var(--ease) both; }
 .pushcard h2 { font-size: 17px; text-transform: uppercase; margin-bottom: var(--s-1); }
 .pushcard p { color: var(--mu); font-size: 14px; }
 @media (min-width: 600px) { .pushcard { grid-template-columns: 44px 1fr auto; } }
+
+/* ---------- Présentation animée (plein écran) ---------- */
+.wel { position: fixed; inset: 0; z-index: 120; background: #050506; opacity: 0; transition: opacity .3s var(--ease); touch-action: none; }
+.wel.on { opacity: 1; }
+.wel-cv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.wel-cv.is-fixed { object-fit: contain; }
+.wel-load { position: absolute; inset: auto 0 45% 0; text-align: center; color: var(--mu); font: 600 13px var(--fd); text-transform: uppercase; letter-spacing: .14em; animation: welBlink 1.2s steps(2) infinite; }
+.wel.ready .wel-load { display: none; }
+@keyframes welBlink { 50% { opacity: .35; } }
+.wel-bar { position: absolute; left: 0; right: 0; top: 0; display: flex; gap: var(--s-2); align-items: center; padding: calc(env(safe-area-inset-top, 0px) + var(--s-3)) var(--s-3) 0; }
+.wel-gap { flex: 1; }
+.wel-btn { height: 40px; min-width: 40px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 var(--s-3); background: #141417; border: 1px solid var(--line2); border-radius: var(--r); color: var(--tx); font: 600 12px var(--fd); text-transform: uppercase; letter-spacing: .06em; transition: opacity .3s, background .15s; }
+.wel-btn:hover { background: var(--s3); }
+.wel-btn .ic { width: 18px; height: 18px; }
+.wel-btn[aria-pressed="true"] { color: var(--red-tx); border-color: var(--red); }
+.wel-btn[data-close] { padding: 0; }
+.wel-btn span { display: none; }
+@media (min-width: 520px) { .wel-btn span { display: inline; } }
+.wel-skip { position: absolute; right: var(--s-3); bottom: calc(env(safe-area-inset-bottom, 0px) + var(--s-4)); display: inline-flex; align-items: center; gap: 4px; height: 36px; padding: 0 var(--s-3); background: transparent; border: 0; color: var(--mu); font: 600 12px var(--fd); text-transform: uppercase; letter-spacing: .1em; }
+.wel-skip .ic { width: 16px; height: 16px; }
+.wel.done .wel-skip, .wel:not(.ready) .wel-skip { opacity: 0; pointer-events: none; }
+.wel-rec { position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + var(--s-4)); transform: translateX(-50%); display: flex; align-items: center; gap: var(--s-2); margin: 0; padding: var(--s-2) var(--s-3); background: #141417; border: 1px solid var(--red); border-radius: var(--r); font: 600 12px var(--fd); text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
+.wel-rec i { width: 10px; height: 10px; border-radius: 50%; background: var(--red); animation: welBlink 1s steps(2) infinite; }
+.wel.recording .wel-bar .wel-btn:not([data-close]), .wel.recording .wel-skip { opacity: .25; pointer-events: none; }
+
+/* ---------- Carte de présentation : création ---------- */
+.cslots { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-3); }
+.cslot { position: relative; background: var(--s1); border: 1px dashed var(--line2); border-radius: var(--r); }
+.cslot.has { border-style: solid; border-color: var(--red-d); }
+.cslot-pick { display: grid; gap: var(--s-2); padding: var(--s-2); cursor: pointer; }
+.cslot-pick input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.cslot-pick:focus-within { outline: 2px solid var(--red-tx); outline-offset: 2px; }
+.cslot-img { aspect-ratio: 4 / 5; display: grid; place-items: center; background: var(--s2); border-radius: 2px; overflow: hidden; color: var(--mu); }
+.cslot-img .ic { width: 36px; height: 36px; }
+.cslot-img img { width: 100%; height: 100%; object-fit: cover; }
+.cslot[data-slot="profile"] .cslot-img, .cslot[data-slot="weapon"] .cslot-img { aspect-ratio: 16 / 10; }
+.cslot[data-slot="weapon"] .cslot-img img, .cslot[data-slot="profile"] .cslot-img img { object-fit: contain; }
+.cslot-txt b { display: block; font: 600 14px var(--fd); text-transform: uppercase; letter-spacing: .04em; }
+.cslot-txt small { color: var(--mu); font-size: 12px; line-height: 1.35; display: block; }
+.cslot-x { position: absolute; top: var(--s-3); right: var(--s-3); height: 28px; padding: 0 var(--s-2); background: var(--ink); border: 1px solid var(--line2); border-radius: var(--r); font: 600 11px var(--fd); text-transform: uppercase; }
+.cslot.loading .cslot-img { animation: welBlink 1s steps(2) infinite; }
+.cslot.loading .cslot-img::after { content: 'Envoi'; font: 600 12px var(--fd); text-transform: uppercase; letter-spacing: .1em; color: var(--tx); }
+.cslot.loading .cslot-img > * { display: none; }
+@media (min-width: 720px) { .cslots { grid-template-columns: repeat(4, 1fr); } .cslot[data-slot] .cslot-img { aspect-ratio: 4 / 5; } }
+
+.card-cta { display: grid; grid-template-columns: 24px 1fr 20px; gap: var(--s-4); align-items: center; border-color: var(--red-d); }
+.card-cta > .ic:first-child { color: var(--red-tx); }
+.card-cta b { display: block; font-family: var(--fd); text-transform: uppercase; letter-spacing: .04em; }
+.card-cta small { color: var(--mu); }
+.prof-card { margin-top: var(--s-4); }
+
+.faces .hscroll { grid-auto-columns: 132px; }
+.face { display: grid; gap: var(--s-2); text-align: center; }
+.face-img { position: relative; aspect-ratio: 4 / 5; background: var(--s2); border: 1px solid var(--red-d); border-radius: var(--r); overflow: hidden; display: grid; place-items: center; }
+.face-img img { width: 100%; height: 100%; object-fit: cover; }
+.face-img i { position: absolute; right: 6px; bottom: 6px; width: 28px; height: 28px; display: grid; place-items: center; background: var(--red); color: #fff; border-radius: 50%; }
+.face-img i .ic { width: 14px; height: 14px; }
+.face b { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- Affiche fixe ---------- */
+.poster { max-width: 720px; margin: 0 auto; padding: var(--s-5) var(--s-4); background: #0a0a0c; border: 1px solid var(--red-d); border-radius: var(--r); text-align: center; position: relative; overflow: hidden; }
+.pst-kick { font: 600 13px var(--fd); text-transform: uppercase; letter-spacing: .16em; margin-bottom: var(--s-4); }
+.pst-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-3); align-items: end; }
+.pst-grid figure { margin: 0; border: 2px solid var(--red-d); border-radius: 2px; overflow: hidden; background: var(--s2); }
+.pst-grid img { width: 100%; height: 100%; object-fit: cover; }
+.pst-photo { transform: rotate(-2deg); aspect-ratio: 4 / 5; }
+.pst-char { transform: rotate(2deg); aspect-ratio: 4 / 5; }
+.pst-prof { grid-column: 1 / -1; }
+.pst-prof img { object-fit: contain; }
+.pst-name { margin: var(--s-5) 0 var(--s-2); font-size: clamp(30px, 9vw, 64px); font-style: italic; text-transform: uppercase; letter-spacing: .02em; transform: skewX(-8deg); }
+.pst-name .kage { font-style: normal; }
+.pst-info { color: var(--mu); font: 600 13px var(--fd); text-transform: uppercase; letter-spacing: .12em; }
+.pst-motto { margin-top: var(--s-2); font-style: italic; }
+.pst-weap { margin: var(--s-4) 0 0; }
+.pst-weap img { width: 100%; max-height: 220px; object-fit: contain; }
+.pst-actions { margin-top: var(--s-5); }
+.pst-actions .av { width: 22px; height: 22px; font-size: 10px; }
+.wel-rec[hidden] { display: none; }

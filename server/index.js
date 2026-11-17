@@ -1,7 +1,7 @@
 // Serveur 影 AaKATSUKI 影 : API, sessions et fichiers du site. Node 22+, aucune dépendance.
 import http from 'node:http';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { readFile, stat } from 'node:fs/promises';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFile, stat, writeFile, readdir, unlink, utimes } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { join, resolve, dirname, extname, basename } from 'node:path';
@@ -26,6 +26,9 @@ const HOST = env.HOST || (PROD ? '0.0.0.0' : '127.0.0.1');
 const TRUST_PROXY = env.TRUST_PROXY === '1';
 const DATA_DIR = resolve(env.DATA_DIR || join(ROOT, 'data'));
 const BACKUP_DIR = join(DATA_DIR, 'backups');
+// Images des cartes de présentation : hors des versions déployées, gardées d'une mise en ligne à l'autre
+const MEDIA_DIR = join(DATA_DIR, 'media');
+mkdirSync(MEDIA_DIR, { recursive: true });
 // Nom du dossier de la version en service (déploiement : releases/<commit>), vérifié après chaque mise en ligne
 const RELEASE = basename(ROOT);
 const DEMO_ACCOUNTS = [
@@ -120,7 +123,18 @@ async function jobs() {
       if (d.getDay() === 0 && d.getHours() >= 20) core.weeklyDigest(); // dimanche soir
     });
     await sessions.purge();
+    await purgeMedia();
   } catch (e) { console.error('Tâche planifiée', e); }
+}
+// Images envoyées mais jamais utilisées (ou remplacées) : supprimées au bout d'un jour
+async function purgeMedia() {
+  const used = new Set();
+  for (const u of store.state.users) for (const k of core.CARD_SLOTS_KEYS) if (u.card?.[k]) used.add(basename(u.card[k]));
+  for (const f of await readdir(MEDIA_DIR).catch(() => [])) {
+    if (used.has(f) || !MEDIA_NAME.test(f)) continue;
+    const s = await stat(join(MEDIA_DIR, f)).catch(() => null);
+    if (s && Date.now() - s.mtimeMs > 864e5) await unlink(join(MEDIA_DIR, f)).catch(() => {});
+  }
 }
 async function dailyBackup() {
   try { console.log('Sauvegarde :', await store.exclusive(() => store.backup(BACKUP_DIR, Number(env.BACKUP_KEEP) || 14))); } catch (e) { console.error('Sauvegarde impossible', e); }
@@ -188,6 +202,23 @@ async function serveStatic(req, res, pathname) {
   send(req, res, 200, buf, type, extra);
 }
 
+// ---------- Images des cartes de présentation ----------
+const MEDIA_NAME = /^[a-f0-9]{32}\.(webp|jpg|png)$/;
+const MEDIA_TYPES = { webp: 'image/webp', jpg: 'image/jpeg', png: 'image/png' };
+function sniffImage(b) {
+  if (b.length > 12 && b.toString('ascii', 0, 4) === 'RIFF' && b.toString('ascii', 8, 12) === 'WEBP') return 'webp';
+  if (b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'jpg';
+  if (b.length > 8 && b.toString('hex', 0, 8) === '89504e470d0a1a0a') return 'png';
+  return null;
+}
+async function serveMedia(req, res, name) {
+  if (!MEDIA_NAME.test(name)) return json(req, res, 404, { error: 'Introuvable.' });
+  const buf = await readFile(join(MEDIA_DIR, name)).catch(() => null);
+  if (!buf) return json(req, res, 404, { error: 'Introuvable.' });
+  // Nom = empreinte du contenu : le fichier ne change jamais
+  send(req, res, 200, buf, MEDIA_TYPES[extname(name).slice(1)], { 'Cache-Control': 'public, max-age=31536000, immutable', ETag: `"${name}"` });
+}
+
 // ---------- Requêtes ----------
 function cookies(req) {
   const out = {};
@@ -201,6 +232,7 @@ const setCookie = (req, token, maxAge) => `${COOKIE}=${token}; Path=/; HttpOnly;
 
 const BANNED = new Set(['__proto__', 'constructor', 'prototype']);
 function readBody(req, limit = 1_000_000) {
+  if (/^\/api\/media$/.test(req.url)) limit = 4_000_000;
   return new Promise((resolve, reject) => {
     if (!/^application\/json\b/.test(req.headers['content-type'] || '')) return reject(new HttpError(415, 'Contenu JSON attendu.'));
     let size = 0; const chunks = [];
@@ -232,7 +264,7 @@ const RPC = {
   publishResults: ['s', 'a'], requestReward: ['s'], cancelRequest: ['s'], processRequest: ['s', 's', 's?'], saveReward: ['o'],
   toggleReward: ['s'], acceptProposal: [], awardDistinction: ['o'], createAnnouncement: ['o'], archiveAnnouncement: ['s'],
   markAllRead: [], markRead: ['s'], addSanction: ['o'], saveRules: ['a'], saveGrades: ['a'], saveWeekly: ['a'],
-  saveRolePerms: ['o'], saveRulebook: ['a'], closeSeason: ['o'], weeklyDigest: ['o?'],
+  saveRolePerms: ['o'], saveRulebook: ['a'], closeSeason: ['o'], weeklyDigest: ['o?'], saveCard: ['s', 'o'],
 };
 function checkArgs(spec, args) {
   if (!Array.isArray(args) || args.length > spec.length) return false;
@@ -333,6 +365,22 @@ async function api(req, res, url) {
     if (user) await push.unsubscribe(user.id, body.endpoint);
     return json(req, res, 200, { ok: true });
   }
+  if (url.pathname === '/api/media') {
+    if (!user) throw new HttpError(401, 'Connecte-toi pour continuer.');
+    if (user.mustChangePassword) throw new HttpError(403, 'Choisis d’abord ton mot de passe.');
+    if (!['active', 'suspended', 'inactive'].includes(user.status)) throw new HttpError(403, 'Réservé aux membres du clan.');
+    if (auth.limited(`media:${user.id}`, 40, 36e5)) throw new HttpError(429, 'Trop d’images envoyées. Réessaie dans une heure.');
+    const buf = Buffer.from(String(body.data || ''), 'base64');
+    const ext = sniffImage(buf);
+    if (!ext) throw new HttpError(400, 'Image invalide (JPEG, PNG ou WebP).');
+    if (buf.length > 2_500_000) throw new HttpError(413, 'Image trop lourde (2,5 Mo maximum).');
+    auth.hit(`media:${user.id}`);
+    const name = `${createHash('sha256').update(buf).digest('hex').slice(0, 32)}.${ext}`;
+    const file = join(MEDIA_DIR, name);
+    if (existsSync(file)) await utimes(file, new Date(), new Date());
+    else await writeFile(file, buf, { mode: 0o644 });
+    return json(req, res, 200, { url: `/media/${name}` });
+  }
   if (url.pathname === '/api/demo/reset') {
     if (!DEMO) throw new HttpError(404, 'Introuvable.');
     if (!user?.roles.includes('superadmin')) throw new HttpError(403, 'Réservé au super administrateur.');
@@ -360,6 +408,7 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://local');
   try {
     if (url.pathname.startsWith('/api/')) await api(req, res, url);
+    else if (url.pathname.startsWith('/media/') && (req.method === 'GET' || req.method === 'HEAD')) await serveMedia(req, res, url.pathname.slice(7));
     else if (req.method === 'GET' || req.method === 'HEAD') await serveStatic(req, res, url.pathname);
     else json(req, res, 405, { error: 'Méthode non autorisée.' });
   } catch (e) {

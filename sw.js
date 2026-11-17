@@ -4,14 +4,14 @@
 // - Images, Three.js et polices : copie locale d'abord (fichiers qui ne changent pas).
 // - État du clan (/api/state) : réseau d'abord, dernier état connu si hors ligne.
 //   Effacé à la déconnexion. Les écritures (POST) ne passent jamais par le cache.
-const VERSION = 'akt-v3';
+const VERSION = 'akt-v4';
 const SHELL = `${VERSION}-shell`;
 const STATIC = `${VERSION}-static`;
 const DATA = `${VERSION}-data`;
 const PRECACHE = [
   '/', '/index.html', '/css/app.css', '/manifest.webmanifest',
-  '/js/main.js', '/js/api.js', '/js/pwa.js', '/js/core.js', '/js/ui.js', '/js/icons.js', '/js/scene3d.js',
-  '/js/views/public.js', '/js/views/member.js', '/js/views/admin.js',
+  '/js/main.js', '/js/api.js', '/js/pwa.js', '/js/core.js', '/js/ui.js', '/js/icons.js', '/js/scene3d.js', '/js/welcome3d.js',
+  '/js/views/public.js', '/js/views/member.js', '/js/views/admin.js', '/js/views/welcome.js',
   '/assets/logo-solid.webp', '/assets/logo-256.webp', '/assets/logo-mask.webp', '/assets/icon-192.png', '/assets/badge-96.png',
 ];
 const CDN = ['https://cdn.jsdelivr.net', 'https://fonts.googleapis.com', 'https://fonts.gstatic.com'];
@@ -63,7 +63,7 @@ self.addEventListener('fetch', (e) => {
       return;
     }
     if (url.pathname.startsWith('/api/')) return;
-    if (url.pathname.startsWith('/assets/')) { e.respondWith(cacheFirst(req)); return; }
+    if (url.pathname.startsWith('/assets/') || url.pathname.startsWith('/media/')) { e.respondWith(cacheFirst(req)); return; }
     if (req.mode === 'navigate') { e.respondWith(networkFirst(req, SHELL, '/index.html')); return; }
     e.respondWith(networkFirst(req, SHELL));
     return;

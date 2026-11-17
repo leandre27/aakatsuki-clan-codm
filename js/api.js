@@ -28,6 +28,38 @@ export function markAnnSeen() {
 }
 export const ready = () => !!state;
 
+// Présentations déjà vues sur cet appareil : la plus récente non vue se lance une fois à l'ouverture
+const welKey = () => `akt.wel.seen.${meId || 'visiteur'}`;
+const welSeen = () => { try { return JSON.parse(localStorage.getItem(welKey()) || '[]'); } catch { return []; } };
+const welTag = (u) => `${u.id}:${u.card.publishedAt}`;
+export function pendingWelcome() {
+  const u = core.me();
+  if (!u || !['active', 'suspended', 'inactive'].includes(u.status)) return null;
+  const seen = welSeen();
+  return core.recentCards(10).find((x) => x.id !== u.id && !seen.includes(welTag(x))) || null;
+}
+export function markWelcomeSeen(u) {
+  if (!u?.card?.publishedAt) return;
+  const seen = welSeen().filter((t) => !t.startsWith(`${u.id}:`));
+  localStorage.setItem(welKey(), JSON.stringify([...seen, welTag(u)].slice(-60)));
+}
+
+// Image d'une carte de présentation : réduite dans le navigateur (WebP, sinon JPEG) puis envoyée
+export async function uploadImage(file, maxSide = 1440) {
+  const bmp = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('Image illisible. Choisis un fichier JPEG, PNG ou WebP.')); i.src = URL.createObjectURL(file); });
+  const k = Math.min(1, maxSide / Math.max(bmp.naturalWidth, bmp.naturalHeight));
+  const c = document.createElement('canvas');
+  c.width = Math.round(bmp.naturalWidth * k); c.height = Math.round(bmp.naturalHeight * k);
+  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+  URL.revokeObjectURL(bmp.src);
+  const toBlob = (type, q) => new Promise((r) => c.toBlob(r, type, q));
+  let blob = await toBlob('image/webp', 0.86);
+  // Sans WebP (Safari) : PNG garde la transparence d'une arme détourée, sinon JPEG
+  if (!blob || blob.type !== 'image/webp') blob = file.type === 'image/png' ? await toBlob('image/png') : await toBlob('image/jpeg', 0.86);
+  const data = await new Promise((r) => { const fr = new FileReader(); fr.onload = () => r(String(fr.result).split(',')[1]); fr.readAsDataURL(blob); });
+  return (await call('/api/media', { data })).url;
+}
+
 async function call(url, body, method = 'POST') {
   let r;
   try {
@@ -109,3 +141,4 @@ export const saveRolePerms = rpc('saveRolePerms');
 export const saveRulebook = rpc('saveRulebook');
 export const closeSeason = rpc('closeSeason');
 export const weeklyDigest = rpc('weeklyDigest');
+export const saveCard = rpc('saveCard');
