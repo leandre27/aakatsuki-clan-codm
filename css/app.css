@@ -918,3 +918,22 @@ fieldset:not([hidden]) { animation: pageIn .3s var(--ease) both; }
 .duel-bet b { color: var(--tx); }
 .duel-bet .ic { width: 18px; height: 18px; }
 .ch-stakes { flex-wrap: wrap; }
+
+/* ---------- Corrections mobile ---------- */
+/* En-tête de page : le bouton passe sous le titre au lieu de sortir de l'écran */
+.page-head { flex-wrap: wrap; align-items: flex-end; }
+.page-head > div:first-child { min-width: 0; flex: 1 1 220px; }
+.page-head > .btn, .page-head > a.btn { flex: none; max-width: 100%; }
+@media (max-width: 520px) { .page-head h1 { font-size: 30px; } }
+/* Champs date et heure d'iOS : restent dans leur cadre */
+input[type="datetime-local"], input[type="date"], input[type="time"] { display: block; width: 100%; max-width: 100%; min-width: 0; min-height: 48px; -webkit-appearance: none; appearance: none; text-align: left; }
+input[type="datetime-local"]::-webkit-date-and-time-value { text-align: left; }
+.field input, .field select, .field textarea { max-width: 100%; min-width: 0; }
+.row2 > * { min-width: 0; }
+select { text-overflow: ellipsis; }
+/* Encadrés cliquables : espace avant la suite */
+.card-cta { margin-bottom: var(--s-4); }
+.card-cta + .chips, .card-cta + .card-cta { margin-top: 0; }
+.s-act { display: flex; align-items: center; gap: var(--s-1); }
+.s-act .icon-btn { width: 36px; height: 36px; color: var(--mu); }
+.s-act .icon-btn:hover { color: var(--red-tx); }

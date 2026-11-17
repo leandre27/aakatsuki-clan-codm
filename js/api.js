@@ -121,6 +121,7 @@ export const setStatus = rpc('setStatus');
 export const setRoles = rpc('setRoles');
 export const updateUser = rpc('updateUser');
 export const toggleActivity = rpc('toggleActivity');
+export const cancelActivity = rpc('cancelActivity');
 export const createActivity = rpc('createActivity');
 export const saveTournament = rpc('saveTournament');
 export const setTStatus = rpc('setTStatus');

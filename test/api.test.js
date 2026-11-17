@@ -405,6 +405,28 @@ test('pari 1v1 : mises prélevées à l’acceptation, le vainqueur prend tout, 
   assert.equal(await bal(member, as.me), a0 + 15);
 });
 
+test('programme : un créneau retiré supprime ses séances à venir, même avec des inscrits ; annulation d’une séance', async () => {
+  const st = (await admin.req('/api/state')).body.state.data;
+  const auto = st.activities.find((a) => a.auto && !a.cancelled && new Date(a.date) > new Date());
+  assert.ok(auto, 'une séance automatique à venir');
+  assert.equal((await member.rpc('toggleActivity', auto.id)).status, 200, 'le membre s’inscrit');
+  const slot = auto.key.split('|')[1];
+  const weekly = st.settings.weekly.filter((w) => w.id !== slot);
+  assert.equal((await admin.rpc('saveWeekly', weekly)).status, 200);
+  const after = (await member.req('/api/state')).body.state.data;
+  assert.ok(!after.activities.some((a) => a.auto && a.key.endsWith(`|${slot}`) && new Date(a.date) > new Date()), 'plus de séance pour le créneau retiré');
+  assert.ok(after.notifications.some((n) => n.text.includes('retirée du programme')), 'l’inscrit est prévenu');
+  const next = after.activities.find((a) => !a.cancelled && new Date(a.date) > new Date());
+  assert.equal((await member.rpc('cancelActivity', next.id)).status, 400, 'réservé à l’encadrement');
+  assert.equal((await admin.rpc('cancelActivity', next.id, 'Maintenance du serveur CODM')).status, 200);
+  const fin = (await member.req('/api/state')).body.state.data;
+  assert.ok(fin.activities.find((a) => a.id === next.id).cancelled);
+  assert.equal((await member.rpc('toggleActivity', next.id)).status, 400, 'plus d’inscription sur une séance annulée');
+  // Le créneau revient : ses séances sont recréées
+  assert.equal((await admin.rpc('saveWeekly', st.settings.weekly)).status, 200);
+  assert.ok((await admin.req('/api/state')).body.state.data.activities.some((a) => a.key.endsWith(`|${slot}`) && !a.cancelled && new Date(a.date) > new Date()));
+});
+
 test('joueur du mois : statistiques gardées, tout le clan invité à voir l’animation', async () => {
   const ms = (await member.req('/api/state')).body.state;
   assert.equal((await member.rpc('awardDistinction', { userId: ms.me, title: 'MVP du mois', period: 'novembre 2026' })).status, 400, 'réservé à l’encadrement');

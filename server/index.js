@@ -255,7 +255,7 @@ function state(user) {
 // Liste blanche des mutations appelables et forme de leurs arguments
 const RPC = {
   awardPoints: ['o'], correctTx: ['s', 's'], approve: ['s'], refuse: ['s', 's'], setStatus: ['s', 's', 's'], setRoles: ['s', 'a'],
-  updateUser: ['s', 'o'], toggleActivity: ['s'], createActivity: ['o'], saveTournament: ['o'], setTStatus: ['s', 's'],
+  updateUser: ['s', 'o'], toggleActivity: ['s'], cancelActivity: ['s', 's?'], createActivity: ['o'], saveTournament: ['o'], setTStatus: ['s', 's'],
   registerT: ['s', 'o?'], joinTeam: ['s', 's'], unregisterT: ['s'], setRegStatus: ['s', 's', 's', 's?'], addMatch: ['s', 'o'],
   publishResults: ['s', 'a'], requestReward: ['s'], cancelRequest: ['s'], processRequest: ['s', 's', 's?'], saveReward: ['o'],
   toggleReward: ['s'], acceptProposal: [], awardDistinction: ['o'], createAnnouncement: ['o'], archiveAnnouncement: ['s'],

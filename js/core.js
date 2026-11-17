@@ -496,8 +496,30 @@ export function recentCards(days = 30) {
 }
 
 // ---------- Activités ----------
+// Séances automatiques à venir alignées sur le programme : créneau supprimé ou changé de jour,
+// la séance disparaît (les inscrits sont prévenus) ; heure ou intitulé changés, elle est mise à jour.
+function syncWeekly() {
+  const now = Date.now();
+  const slots = new Map(D().settings.weekly.filter((w) => w.ruleId).map((w) => [w.id, w]));
+  let changed = 0;
+  D().activities = D().activities.filter((a) => {
+    if (!a.auto || a.cancelled || new Date(a.date).getTime() <= now) return true;
+    const w = slots.get(String(a.key || '').split('|')[1]);
+    const d = new Date(a.date);
+    if (w && (d.getDay() + 6) % 7 === w.day) {
+      const [h, m] = w.time.split(':').map(Number); d.setHours(h, m, 0, 0);
+      const next = { title: w.label, ruleId: w.ruleId, mode: w.mode, date: d.toISOString(), key: `${d.toISOString().slice(0, 10)}|${w.id}` };
+      if (Object.keys(next).some((k) => a[k] !== next[k])) { Object.assign(a, next); changed++; }
+      return true;
+    }
+    for (const id of a.registrations) notify(id, `La séance « ${a.title} » du ${when(a.date)} est retirée du programme.`, '#/calendrier');
+    changed++;
+    return false;
+  });
+  return changed;
+}
 export function ensureUpcoming() {
-  const db = D(); let added = 0;
+  const db = D(); let added = syncWeekly();
   const base = new Date(); base.setHours(0, 0, 0, 0);
   for (let i = 0; i < 14; i++) {
     const d = new Date(base.getTime() + i * 864e5);
@@ -514,15 +536,25 @@ export function ensureUpcoming() {
   if (added) commit();
 }
 export const upcomingActivities = (n = 10) => D().activities.filter((a) => new Date(a.date).getTime() > Date.now() - 3 * 36e5 && !a.cancelled).sort((a, b) => a.date.localeCompare(b.date)).slice(0, n);
-export const recentActivities = () => D().activities.filter((a) => new Date(a.date).getTime() < Date.now() + 864e5 && new Date(a.date).getTime() > Date.now() - 21 * 864e5).sort((a, b) => b.date.localeCompare(a.date));
+export const recentActivities = () => D().activities.filter((a) => !a.cancelled && new Date(a.date).getTime() < Date.now() + 864e5 && new Date(a.date).getTime() > Date.now() - 21 * 864e5).sort((a, b) => b.date.localeCompare(a.date));
 export function toggleActivity(id) {
   const u = mustActiveMember();
-  const a = D().activities.find((x) => x.id === id); if (!a) fail('Séance introuvable.');
+  const a = D().activities.find((x) => x.id === id); if (!a || a.cancelled) fail('Séance introuvable.');
   if (new Date(a.date).getTime() < Date.now()) fail('Cette séance a déjà commencé.');
   const i = a.registrations.indexOf(u.id);
   if (i >= 0) a.registrations.splice(i, 1); else a.registrations.push(u.id);
   commit();
   return i < 0;
+}
+// Annuler une séance à venir (ponctuelle ou issue du programme) : tout le clan est prévenu
+export function cancelActivity(id, reason = '') {
+  if (!can('points.manage') && !can('rules.manage')) fail('Action non autorisée pour ton rôle.');
+  const a = D().activities.find((x) => x.id === id); if (!a || a.cancelled) fail('Séance introuvable.');
+  if (new Date(a.date).getTime() < Date.now()) fail('Cette séance est déjà passée.');
+  a.cancelled = true; a.cancelledAt = nowISO(); a.cancelReason = str(reason, 200).trim();
+  audit('Séance annulée', a.title, `${new Date(a.date).toLocaleString('fr-FR')}${a.cancelReason ? ` · ${a.cancelReason}` : ''}`);
+  notifyAll(`Séance annulée : ${a.title}, ${when(a.date)}.${a.cancelReason ? ` ${a.cancelReason}` : ''}`, '#/calendrier');
+  commit();
 }
 export function createActivity({ title, ruleId, mode, date }) {
   if (!can('points.manage') && !can('rules.manage')) fail('Action non autorisée pour ton rôle.');
@@ -959,9 +991,7 @@ export function saveWeekly(list) {
     if (w.mode && !['MJ', 'BR'].includes(w.mode)) fail('Mode invalide.');
   }
   D().settings.weekly = list.map((w) => ({ id: w.id || uid('w'), day: Number(w.day), label: w.label.trim(), time: w.time, ruleId: w.ruleId || null, mode: w.mode || null }));
-  // retire les séances automatiques futures sans inscrits, puis régénère
-  const now = Date.now();
-  D().activities = D().activities.filter((a) => !(a.auto && new Date(a.date).getTime() > now && !a.registrations.length));
+  syncWeekly();
   audit('Calendrier modifié', 'Programme hebdomadaire');
   notifyAll('Le programme de la semaine a changé.', '#/calendrier');
   commit();
