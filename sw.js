@@ -4,7 +4,7 @@
 // - Images, Three.js et polices : copie locale d'abord (fichiers qui ne changent pas).
 // - État du clan (/api/state) : réseau d'abord, dernier état connu si hors ligne.
 //   Effacé à la déconnexion. Les écritures (POST) ne passent jamais par le cache.
-const VERSION = 'akt-v8';
+const VERSION = 'akt-v9';
 const SHELL = `${VERSION}-shell`;
 const STATIC = `${VERSION}-static`;
 const DATA = `${VERSION}-data`;

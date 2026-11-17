@@ -114,7 +114,7 @@ export function poster({ params }) {
       <p class="pst-kick"><span class="kage">影</span> Bienvenue dans AaKATSUKI <span class="kage">影</span></p>
       <div class="pst-grid">${img('photo', 'photo')}${img('character', 'char')}${img('profile', 'prof')}</div>
       <h1 class="pst-name"><span class="kage">影</span> ${esc(name)} <span class="kage">影</span></h1>
-      <p class="pst-info">${[u.level ? `Niveau ${esc(u.level)}` : '', esc(u.specialty || ''), esc(api.MODES[u.mode] || '')].filter(Boolean).join(' · ')}</p>
+      <p class="pst-info">${[u.level ? `Niveau ${esc(u.level)}` : '', esc(u.specialty || ''), esc(api.MAIN_MODE[u.mode] || '')].filter(Boolean).join(' · ')}</p>
       ${c.motto ? `<p class="pst-motto">« ${esc(c.motto)} »</p>` : ''}
       ${img('weapon', 'weap')}
     </div>

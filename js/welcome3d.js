@@ -2,7 +2,7 @@
 // Tout est dessiné dans la scène (textes compris) : la vidéo enregistrée est identique à l'écran.
 import * as THREE from 'three';
 import { I } from './icons.js';
-import { MODES } from './core.js';
+import { MAIN_MODE } from './core.js';
 
 const RED = '#d6202a', DARK_RED = '#8a1016', WHITE = '#f2efe9', MUTED = '#aaa59e';
 const FD = '"Chakra Petch", system-ui, sans-serif', FB = '"Barlow", system-ui, sans-serif';
@@ -499,7 +499,7 @@ function welcomeScene(u, { scene, camera, view, CAM_Z, reduce, load, text }) {
     hello = text(lineTex([{ text: 'BIENVENUE', size: 190, y: 0.5, spacing: 18 }], 1600, 260), 1600 / 260);
     kicker = text(lineTex([{ text: 'BIENVENUE DANS 影 AaKATSUKI 影', size: 92, y: 0.5, spacing: 10, color: WHITE }], 1600, 140), 1600 / 140);
     title = text(titleTex(u.pseudo), 2048 / 360);
-    const infoLines = [{ text: [u.level ? `NIVEAU ${u.level}` : '', u.specialty ? String(u.specialty).toUpperCase() : '', MODES[u.mode] ? MODES[u.mode].toUpperCase() : ''].filter(Boolean).join('  ·  '), size: 70, y: card.motto ? 0.3 : 0.5, spacing: 6, color: MUTED, weight: 600, family: FB }];
+    const infoLines = [{ text: [u.level ? `NIVEAU ${u.level}` : '', u.specialty ? String(u.specialty).toUpperCase() : '', MAIN_MODE[u.mode] ? MAIN_MODE[u.mode].toUpperCase() : ''].filter(Boolean).join('  ·  '), size: 70, y: card.motto ? 0.3 : 0.5, spacing: 6, color: MUTED, weight: 600, family: FB }];
     if (card.motto) infoLines.push({ text: `« ${card.motto} »`, size: 64, y: 0.75, color: WHITE, weight: 500, family: FB, italic: true });
     info = text(lineTex(infoLines, 1600, 200), 1600 / 200);
     let t = 2.4;
