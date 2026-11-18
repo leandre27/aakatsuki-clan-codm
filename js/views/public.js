@@ -1,5 +1,6 @@
 import * as api from '../api.js';
 import { I, cloud, logo, clanName } from '../icons.js';
+import { sessionRow } from './sessions.js';
 import { installCard, bindInstall, syncPush } from '../pwa.js';
 import { esc, nf, fmtDT, fmtTime, ago, avatar, toast, act, sheet, formObj, head, empty, podium, rankList, tCard, rewardTile, weekly, tilt, gradeTag, rStatusPill } from '../ui.js';
 
@@ -167,13 +168,7 @@ export function calendar({ rerender }) {
     <section class="sec split">
       <div><div class="sec-head"><h2>Semaine type</h2></div>${weekly(db.settings.weekly)}</div>
       <div><div class="sec-head"><h2>Prochaines séances</h2></div>
-        <ul class="sessions">${sessions.map((a) => {
-          const rule = db.settings.pointRules.find((r) => r.id === a.ruleId);
-          const inn = u && a.registrations.includes(u.id);
-          return `<li><div class="s-when"><b>${new Date(a.date).toLocaleDateString('fr-FR', { weekday: 'short' })}</b><span>${fmtTime(a.date)}</span></div>
-            <div class="s-main"><b>${esc(a.title)}</b><small>${a.registrations.length} présent${a.registrations.length > 1 ? 's' : ''} annoncé${a.registrations.length > 1 ? 's' : ''}${rule ? ` · +${rule.points} pts` : ''}</small></div>
-            ${u?.status === 'active' ? `<button class="btn btn-sm ${inn ? 'btn-line' : ''}" data-act="${a.id}">${inn ? 'Inscrit' : 'Je viens'}</button>` : ''}</li>`;
-        }).join('') || `<li class="muted">Aucune séance programmée.</li>`}</ul>
+        <ul class="sessions">${sessions.map((a) => sessionRow(a, u)).join('') || `<li class="muted">Aucune séance programmée.</li>`}</ul>
       </div>
     </section>
     <section class="sec"><div class="sec-head"><h2>Compétitions</h2></div>

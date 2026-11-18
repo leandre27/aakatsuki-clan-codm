@@ -162,3 +162,33 @@ export function challengeTodo() {
   const me = core.me(); if (!me) return 0;
   return (state?.challenges || []).filter((c) => (c.status === 'pending' && c.toId === me.id) || (c.status === 'accepted' && [c.fromId, c.toId].includes(me.id)) || (c.status === 'reported' && [c.fromId, c.toId].includes(me.id) && c.reportedBy !== me.id)).length;
 }
+
+// Pastilles « nouveau » de la barre d'onglets : pour chaque onglet, la liste de ce qu'il affiche ;
+// ce qui n'y était pas lors du dernier passage sur l'onglet (sur cet appareil) allume la pastille.
+const seenKey = () => `akt.tabs.seen.${meId || 'visiteur'}`;
+const STAT_KINDS = new Set(['earn', 'penalty', 'correction']);
+function tabKeys(tab) {
+  const db = state; const u = core.me();
+  if (!db || !u) return [];
+  switch (tab) {
+    case 'base': return [...core.recentCards(10).map((x) => `c:${x.id}:${x.card.publishedAt}`), ...core.mvps().slice(0, 3).map((d) => `m:${d.id}`)];
+    case 'classement': return db.transactions.filter((t) => STAT_KINDS.has(t.kind)).slice(-30).map((t) => t.id);
+    case 'calendrier': return core.upcomingActivities(20).filter((a) => !a.auto || new Date(a.date).getTime() - Date.now() < 3 * 864e5).map((a) => a.id);
+    case 'tournois': return db.tournaments.filter((t) => t.status !== 'draft').map((t) => `${t.id}:${t.status}`);
+    case 'defis': return (db.challenges || []).map((c) => `${c.id}:${c.status}`);
+    case 'recompenses': return [...db.rewards.filter((r) => r.active !== false).map((r) => r.id), ...db.requests.filter((q) => q.userId === u.id).map((q) => `${q.id}:${q.status}`)];
+    default: return [];
+  }
+}
+function seenMap() { try { return JSON.parse(localStorage.getItem(seenKey()) || '{}'); } catch { return {}; } }
+export function tabHasNew(tab) {
+  const seen = seenMap()[tab];
+  const keys = tabKeys(tab);
+  if (!seen) { markTabSeen(tab, keys); return false; } // premier passage sur cet appareil : rien d'allumé
+  const set = new Set(seen);
+  return keys.some((k) => !set.has(k));
+}
+export function markTabSeen(tab, keys = tabKeys(tab)) {
+  const m = seenMap(); m[tab] = keys.slice(-200);
+  localStorage.setItem(seenKey(), JSON.stringify(m));
+}

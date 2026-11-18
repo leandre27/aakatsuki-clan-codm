@@ -555,7 +555,7 @@ export function cancelActivity(id, reason = '') {
   if (new Date(a.date).getTime() < Date.now()) fail('Cette séance est déjà passée.');
   a.cancelled = true; a.cancelledAt = nowISO(); a.cancelReason = str(reason, 200).trim();
   audit('Séance annulée', a.title, `${new Date(a.date).toLocaleString('fr-FR')}${a.cancelReason ? ` · ${a.cancelReason}` : ''}`);
-  notifyAll(`Séance annulée : ${a.title}, ${when(a.date)}.${a.cancelReason ? ` ${a.cancelReason}` : ''}`, '#/calendrier');
+  notifyAll(`Séance annulée : ${a.title}, ${when(a.date)}.${a.cancelReason ? ` ${a.cancelReason}` : ''}`, `#/seance/${a.id}`);
   commit();
 }
 export function createActivity({ title, ruleId, mode, date }) {
@@ -565,7 +565,7 @@ export function createActivity({ title, ruleId, mode, date }) {
   const a = { id: uid('a'), key: uid('k'), title: title.trim(), ruleId, mode: mode || null, date: new Date(date).toISOString(), registrations: [], auto: false };
   D().activities.push(a);
   audit('Activité programmée', a.title, new Date(a.date).toLocaleString('fr-FR'));
-  notifyAll(`Nouvelle séance : ${a.title}, ${when(a.date)}.`, '#/calendrier');
+  notifyAll(`Nouvelle séance : ${a.title}, ${when(a.date)}.`, `#/seance/${a.id}`);
   commit();
 }
 // Tout le clan : membres actifs, suspendus et inactifs (pas les comptes en attente, refusés ou exclus)
@@ -581,7 +581,7 @@ export function remindActivities() {
     const at = new Date(a.date).getTime();
     if (at < now || at > now + 3 * 36e5) continue;
     const hour = new Date(a.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-    notifyAll(`Aujourd’hui à ${hour} : ${a.title}. Inscris-toi depuis le calendrier.`, '#/calendrier');
+    notifyAll(`Aujourd’hui à ${hour} : ${a.title}. Annonce ta présence depuis la fiche de la séance.`, `#/seance/${a.id}`);
     a.reminded = true; n++;
   }
   if (n) commit();

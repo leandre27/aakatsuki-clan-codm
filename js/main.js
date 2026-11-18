@@ -6,6 +6,7 @@ import * as mem from './views/member.js';
 import * as adm from './views/admin.js';
 import * as wel from './views/welcome.js';
 import * as duels from './views/challenges.js';
+import * as ses from './views/sessions.js';
 import { initPWA, installTopButton, bindInstall, syncPush } from './pwa.js';
 import { toast } from './ui.js';
 
@@ -14,7 +15,7 @@ const routes = [
   ['', pub.home], ['clan', pub.clan], ['classement', pub.leaderboard], ['calendrier', pub.calendar], ['recompenses', pub.rewards],
   ['rejoindre', pub.register], ['connexion', pub.login], ['reglement', mem.rulebook], ['annonces', mem.announcements],
   ['base', mem.dashboard, 'member'], ['profil', mem.profile, 'member'], ['joueur/:id', mem.profile, 'member'],
-  ['tournois', mem.tournaments, 'member'], ['defis', duels.challenges, 'member'], ['tournoi/:id', mem.tournament, 'member'],
+  ['tournois', mem.tournaments, 'member'], ['seance/:id', ses.session, 'member'], ['defis', duels.challenges, 'member'], ['tournoi/:id', mem.tournament, 'member'],
   ['bienvenue/:id', wel.poster, 'member'], ['mvp', wel.mvpHall, 'member'], ['mvp/:id', wel.mvpHall, 'member'], ['presentation', wel.editor, 'member'], ['presentation/:id', wel.editor, 'staff'],
   ['notifications', mem.notifications, 'auth'], ['moi', mem.menu, 'auth'], ['mot-de-passe', mem.firstPassword, 'auth'],
   ['admin', adm.overview, 'staff'], ['admin/membres', adm.members, 'staff'], ['admin/points', adm.points, 'staff'],
@@ -75,7 +76,7 @@ function chrome(path) {
   const desktop = member
     ? [['#/base', 'Base'], ['#/annonces', 'Annonces'], ['#/classement', 'Classement'], ['#/tournois', 'Tournois'], ['#/defis', 'Défis 1v1'], ['#/recompenses', 'Récompenses'], ['#/calendrier', 'Calendrier']]
     : [['#/', 'Accueil'], ['#/clan', 'Le clan'], ['#/classement', 'Classement'], ['#/calendrier', 'Calendrier'], ['#/recompenses', 'Récompenses']];
-  const on = (h) => { const p = h.replace('#/', ''); return p === '' ? path === '' : path === p || path.startsWith(p + '/') || (p === 'tournois' && (path.startsWith('tournoi/') || (path === 'defis' && innerWidth < 960))); };
+  const on = (h) => { const p = h.replace('#/', ''); return p === '' ? path === '' : path === p || path.startsWith(p + '/') || (p === 'tournois' && path.startsWith('tournoi/')) || (p === 'calendrier' && path.startsWith('seance/')); };
   const offline = api.info().offline;
   const since = localStorage.getItem('akt.lastSync');
   document.getElementById('topbar').innerHTML = `${offline ? `<div class="offbar">Hors ligne · données du ${since ? new Date(since).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'dernier passage'}, en lecture seule</div>` : ''}<div class="wrap tb">
@@ -91,10 +92,36 @@ function chrome(path) {
     </div></div>`;
   bindInstall(document.getElementById('topbar'));
   const tabs = member
-    ? [['#/base', I.home, 'Base'], ['#/classement', I.rank, 'Classement'], ['#/tournois', I.cup, 'Tournois'], ['#/recompenses', I.gift, 'Butin'], ['#/moi', I.user, 'Moi']]
+    ? [['#/base', I.home, 'Base'], ['#/classement', I.rank, 'Classement'], ['#/calendrier', I.cal, 'Séances'], ['#/tournois', I.cup, 'Tournois'], ['#/defis', I.target, 'Défis'], ['#/recompenses', I.gift, 'Butin'], ['#/moi', I.user, 'Moi']]
     : [['#/', I.home, 'Accueil'], ['#/classement', I.rank, 'Classement'], ['#/calendrier', I.cal, 'Calendrier'], ['#/recompenses', I.gift, 'Récompenses'], [u ? '#/moi' : '#/rejoindre', I.user, u ? 'Moi' : 'Rejoindre']];
-  const active = (h) => on(h) || (h === '#/moi' && ['profil', 'notifications', 'reglement', 'clan', 'annonces', 'presentation', 'mvp'].includes(path.split('/')[0])) || (h === '#/moi' && path.startsWith('admin')) || (h === '#/tournois' && path === 'calendrier' && member);
-  document.getElementById('tabbar').innerHTML = tabs.map(([h, i, l]) => `<a href="${h}" class="${active(h) ? 'on' : ''}" ${active(h) ? 'aria-current="page"' : ''}>${i}<span>${esc(l)}</span></a>`).join('');
+  const active = (h) => on(h) || (h === '#/moi' && ['profil', 'notifications', 'reglement', 'clan', 'annonces', 'presentation', 'mvp'].includes(path.split('/')[0])) || (h === '#/moi' && path.startsWith('admin'));
+  // Pastille « nouveau » : l'onglet ouvert est marqué vu, les autres s'allument s'il y a du neuf
+  const mark = (h) => {
+    if (!member) return '';
+    const tab = h.replace('#/', '');
+    if (tab === 'moi') { const n = unread + annNew; return n ? `<i class="tab-n">${n > 9 ? '9+' : n}</i>` : ''; }
+    if (tab === 'defis') { const n = api.challengeTodo(); if (n) return `<i class="tab-n">${n}</i>`; }
+    if (active(h)) { api.markTabSeen(tab); return ''; }
+    return api.tabHasNew(tab) ? '<i class="tab-dot" aria-label="Nouveau"></i>' : '';
+  };
+  const bar = document.getElementById('tabbar');
+  bar.classList.toggle('scroll', tabs.length > 5);
+  const keep = bar.scrollLeft;
+  bar.innerHTML = tabs.map(([h, i, l]) => `<a href="${h}" class="${active(h) ? 'on' : ''}" ${active(h) ? 'aria-current="page"' : ''}><span class="tab-ic">${i}${mark(h)}</span><span>${esc(l)}</span></a>`).join('');
+  bar.scrollLeft = keep;
+  // Mêmes pastilles sur les liens du haut (ordinateur)
+  document.querySelectorAll('#topbar .tb-links a').forEach((a) => { const m = bar.querySelector(`a[href="${a.getAttribute('href')}"] .tab-ic i`); if (m) a.insertAdjacentHTML('beforeend', m.outerHTML); });
+  // L'onglet ouvert reste visible quand la barre défile
+  const cur = bar.querySelector('a.on');
+  if (cur && tabs.length > 5) { const l = cur.offsetLeft, r = l + cur.offsetWidth; if (l < bar.scrollLeft || r > bar.scrollLeft + bar.clientWidth) bar.scrollLeft = l - (bar.clientWidth - cur.offsetWidth) / 2; }
+  // Onglets cachés à droite : dégradé, et point rouge s'ils ont du nouveau
+  const edge = () => {
+    const right = bar.scrollLeft + bar.clientWidth;
+    bar.classList.toggle('more', bar.scrollWidth - right > 4);
+    bar.classList.toggle('more-new', [...bar.querySelectorAll('a')].some((a) => a.offsetLeft + a.offsetWidth / 2 > right && a.querySelector('.tab-ic i')));
+  };
+  edge();
+  bar.onscroll = edge;
 }
 
 addEventListener('hashchange', () => render());

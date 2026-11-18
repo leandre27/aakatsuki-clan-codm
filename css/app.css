@@ -947,3 +947,37 @@ select { text-overflow: ellipsis; }
   .tb-right .icon-btn { width: 36px; }
   .tb-right .tb-install { padding: 0 6px; }
 }
+
+/* ---------- Barre d'onglets défilante (membres) et pastilles « nouveau » ---------- */
+#tabbar.scroll { display: flex; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+#tabbar.scroll::-webkit-scrollbar { display: none; }
+#tabbar.scroll a { flex: 1 0 auto; min-width: 64px; padding: 0 10px; letter-spacing: .02em; scroll-snap-align: start; }
+#tabbar.scroll::after { content: ''; position: sticky; right: 0; flex: 0 0 36px; margin-left: -36px; pointer-events: none; background: linear-gradient(90deg, transparent, var(--s1) 70%); opacity: 0; transition: opacity .2s; }
+#tabbar.scroll.more-new::after { background: radial-gradient(circle at 26px 22px, var(--red) 0 4px, transparent 5px), linear-gradient(90deg, transparent, var(--s1) 70%); }
+#tabbar.scroll.more::after { opacity: 1; }
+.tab-ic { position: relative; display: grid; place-items: center; }
+.tab-dot { position: absolute; top: -2px; right: -5px; width: 9px; height: 9px; border-radius: 50%; background: var(--red); box-shadow: 0 0 0 2px var(--s1); animation: tabPulse 2s var(--ease) infinite; }
+.tab-n { position: absolute; top: -6px; left: calc(100% - 8px); min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: var(--red); color: #fff; font: 700 10px/17px var(--fd); font-style: normal; text-align: center; letter-spacing: 0; box-shadow: 0 0 0 2px var(--s1); }
+@keyframes tabPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.25); } }
+@media (prefers-reduced-motion: reduce) { .tab-dot { animation: none; } }
+.tb-links a .tab-dot, .tb-links a .tab-n { position: absolute; top: 4px; right: 0; left: auto; animation: none; box-shadow: none; }
+.tb-links a .tab-dot { width: 7px; height: 7px; }
+.tb-links a .tab-n { top: -2px; right: -8px; }
+
+/* ---------- Fiche séance ---------- */
+.sessions li.s-linked { position: relative; }
+.sessions .s-link { position: absolute; inset: 0; z-index: 0; }
+.sessions li.s-linked .btn { position: relative; z-index: 1; }
+.sessions li.s-linked:hover { background: var(--s2); }
+.sessions li > .ic { color: var(--mu); width: 18px; height: 18px; }
+.ses-count, .ses-cancel { display: inline-flex; align-items: center; gap: var(--s-2); font: 700 15px var(--fd); text-transform: uppercase; letter-spacing: .05em; margin: 0; }
+.ses-count { color: var(--red-tx); }
+.ses-cancel { color: var(--mu); }
+.ses-count .ic, .ses-cancel .ic { width: 18px; height: 18px; }
+.ses-hero .row { margin-top: var(--s-4); }
+.ses-note { margin: var(--s-4) 0 0; max-width: 60ch; }
+.ses-people { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 2px; }
+.ses-people a { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-2) var(--s-3); background: var(--s1); min-width: 0; }
+.ses-people a:hover { background: var(--s2); }
+.ses-people .ses-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+.ses-people small { color: var(--red-tx); font: 700 12px var(--fd); }
